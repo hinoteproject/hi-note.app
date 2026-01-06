@@ -1,0 +1,18 @@
+# Ignore native folders (EAS will regenerate)
+android/
+ios/
+
+# Ignore node_modules (EAS will reinstall)
+node_modules/
+
+# Ignore build artifacts
+.expo/
+dist/
+build/
+
+# Ignore git
+.git/
+
+# Ignore IDE
+.idea/
+.vscode/

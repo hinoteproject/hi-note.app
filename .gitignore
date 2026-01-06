@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Native builds
+android/
+ios/
+
+# Expo
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Env files (giữ keys.ts vì team cần dùng)
+# src/config/keys.ts
+
+# Build
+build/
+*.apk
+*.aab
+*.ipa

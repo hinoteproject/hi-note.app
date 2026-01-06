@@ -1,0 +1,367 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { 
+  addExpenseToFirebase, 
+  getExpensesFromFirebase,
+  Expense 
+} from '../services/firebaseStore';
+import { isFirebaseConfigured } from '../config/keys';
+
+export function ExpenseScreen() {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const categories = [
+    { key: 'import', label: 'Nhập hàng' },
+    { key: 'salary', label: 'Lương' },
+    { key: 'rent', label: 'Mặt bằng' },
+    { key: 'electric', label: 'Điện' },
+    { key: 'water', label: 'Nước' },
+    { key: 'internet', label: 'Internet' },
+    { key: 'other', label: 'Khác' },
+  ];
+
+  // Load expenses từ Firebase
+  useEffect(() => {
+    const loadExpenses = async () => {
+      if (isFirebaseConfigured) {
+        try {
+          const data = await getExpensesFromFirebase();
+          setExpenses(data);
+        } catch (error) {
+          console.error('Error loading expenses:', error);
+        }
+      }
+      setIsLoading(false);
+    };
+    loadExpenses();
+  }, []);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -10, duration: 2000, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  const formatMoney = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
+
+  const handleAddExpense = async () => {
+    if (!inputText.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập chi phí');
+      return;
+    }
+    const regex = /(\d+)\s*(?:k|nghìn|ngàn|tr|triệu)?/i;
+    const match = inputText.match(regex);
+    if (match) {
+      let amount = parseInt(match[1]);
+      if (/tr|triệu/i.test(inputText)) amount *= 1000000;
+      else if (/k|nghìn|ngàn/i.test(inputText)) amount *= 1000;
+      else if (amount < 1000) amount *= 1000;
+
+      const name = inputText.replace(regex, '').trim() || 
+        categories.find(c => c.key === selectedCategory)?.label || 'Chi phí khác';
+
+      setIsSaving(true);
+      try {
+        if (isFirebaseConfigured) {
+          const id = await addExpenseToFirebase({
+            name,
+            amount,
+            category: selectedCategory || 'other',
+            createdAt: new Date(),
+          });
+          setExpenses([{ id, name, amount, category: selectedCategory || 'other', createdAt: new Date() }, ...expenses]);
+        } else {
+          const newExpense: Expense = {
+            id: Date.now().toString(),
+            name,
+            amount,
+            category: selectedCategory || 'other',
+            createdAt: new Date(),
+          };
+          setExpenses([newExpense, ...expenses]);
+        }
+        setShowAddModal(false);
+        setInputText('');
+        setSelectedCategory('');
+      } catch (error) {
+        console.error('Error adding expense:', error);
+        Alert.alert('Lỗi', 'Không thể lưu chi phí. Vui lòng thử lại.');
+      }
+      setIsSaving(false);
+    } else {
+      Alert.alert('Lỗi', 'Vui lòng nhập số tiền\nVD: "Mua cam 500k"');
+    }
+  };
+
+  const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  return (
+    <View style={styles.container}>
+      <LinearGradient colors={['#E8F4FE', '#EEF2FF', '#F8FAFC']} style={StyleSheet.absoluteFill} />
+      
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Chi phí</Text>
+        </View>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {expenses.length === 0 ? (
+            <View style={styles.emptyState}>
+              {/* Robot */}
+              <Animated.View style={[styles.robotWrap, { transform: [{ translateY: floatAnim }] }]}>
+                <View style={styles.aiBadge}>
+                  <Text style={styles.aiBadgeText}>AI</Text>
+                </View>
+                
+                <Text style={styles.spark1}>✦</Text>
+                <Text style={styles.spark2}>◇</Text>
+                <Text style={styles.spark3}>✦</Text>
+                
+                <View style={styles.robot}>
+                  <View style={styles.earL} />
+                  <View style={styles.earR} />
+                  <View style={styles.head}>
+                    <View style={styles.eyes}>
+                      <View style={styles.eye} />
+                      <View style={styles.eye} />
+                    </View>
+                    <View style={styles.mouth} />
+                  </View>
+                </View>
+                <View style={styles.shadow} />
+              </Animated.View>
+
+              {/* Features */}
+              <View style={styles.features}>
+                <View style={styles.featureRow}>
+                  <View style={[styles.featureIcon, { backgroundColor: '#DCFCE7' }]}>
+                    <Text style={styles.featureEmoji}>✨</Text>
+                  </View>
+                  <View style={styles.featureTextWrap}>
+                    <Text style={styles.featureBold}>5 giây thêm chi phí:</Text>
+                    <Text style={styles.featureNormal}> Đọc, gõ là xong</Text>
+                  </View>
+                </View>
+
+                <View style={styles.featureRow}>
+                  <View style={[styles.featureIcon, { backgroundColor: '#FEF3C7' }]}>
+                    <Text style={styles.featureEmoji}>📊</Text>
+                  </View>
+                  <View style={styles.featureTextWrap}>
+                    <Text style={styles.featureBold}>Xem nhanh top chi:</Text>
+                    <Text style={styles.featureNormal}> AI tự tổng hợp cho bạn</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>💸 Tổng chi tháng này</Text>
+                <Text style={styles.summaryValue}>{formatMoney(totalExpense)}đ</Text>
+              </View>
+              {expenses.map((expense) => (
+                <View key={expense.id} style={styles.expenseItem}>
+                  <View style={styles.expenseIcon}>
+                    <View style={styles.expenseDot} />
+                  </View>
+                  <View style={styles.expenseInfo}>
+                    <Text style={styles.expenseName}>{expense.name}</Text>
+                    <Text style={styles.expenseTime}>
+                      {new Date(expense.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <Text style={styles.expenseAmount}>-{formatMoney(expense.amount)}đ</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          <View style={{ height: 200 }} />
+        </ScrollView>
+
+        {/* FAB */}
+        <Animated.View style={[styles.fabWrap, { transform: [{ scale: pulseAnim }] }]}>
+          <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)} activeOpacity={0.9}>
+            <LinearGradient colors={['#818CF8', '#6366F1']} style={styles.fabCircle}>
+              <Text style={styles.fabPlus}>+</Text>
+            </LinearGradient>
+            <Text style={styles.fabLabel}>Thêm chi phí</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </SafeAreaView>
+
+      {/* Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent>
+        <View style={styles.modalBg}>
+          <View style={styles.modalBox}>
+            <LinearGradient colors={['#EEF2FF', '#F8FAFC', '#FFF']} style={styles.modalGradient}>
+              <SafeAreaView style={{ flex: 1 }}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Thêm chi phí</Text>
+                  <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                    <Text style={styles.modalClose}>Đóng</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                  <View style={styles.modalBody}>
+                    <View style={styles.hintBox}>
+                      <Text style={styles.hintText}>
+                        Bạn có thể đọc '<Text style={styles.hintBold}>Mua cam 500k</Text>' để thêm chi phí
+                      </Text>
+                    </View>
+
+                    <View style={styles.catsWrap}>
+                      <View style={styles.catsRow}>
+                        {categories.slice(0, 3).map((c) => (
+                          <TouchableOpacity
+                            key={c.key}
+                            style={[styles.catChip, selectedCategory === c.key && styles.catChipActive]}
+                            onPress={() => setSelectedCategory(selectedCategory === c.key ? '' : c.key)}
+                          >
+                            <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <View style={styles.catsRow}>
+                        {categories.slice(3).map((c) => (
+                          <TouchableOpacity
+                            key={c.key}
+                            style={[styles.catChip, selectedCategory === c.key && styles.catChipActive]}
+                            onPress={() => setSelectedCategory(selectedCategory === c.key ? '' : c.key)}
+                          >
+                            <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputBar}>
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="Nhập tên khoản chi + s..."
+                      placeholderTextColor="#94A3B8"
+                      value={inputText}
+                      onChangeText={setInputText}
+                      onSubmitEditing={handleAddExpense}
+                      autoFocus
+                    />
+                    <TouchableOpacity style={styles.iconBtn}><Text>🎤</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.iconBtn}><Text>📷</Text></TouchableOpacity>
+                  </View>
+                </KeyboardAvoidingView>
+              </SafeAreaView>
+            </LinearGradient>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  safeArea: { flex: 1 },
+  header: { paddingHorizontal: 20, paddingVertical: 12 },
+  title: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
+  content: { flex: 1, paddingHorizontal: 20 },
+
+  emptyState: { alignItems: 'center', paddingTop: 30 },
+
+  robotWrap: { width: 200, height: 180, alignItems: 'center', justifyContent: 'center', marginBottom: 30, position: 'relative' },
+  aiBadge: { position: 'absolute', top: 10, left: 30, backgroundColor: '#DBEAFE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, zIndex: 5 },
+  aiBadgeText: { fontSize: 13, fontWeight: '700', color: '#3B82F6' },
+  spark1: { position: 'absolute', top: 20, right: 40, fontSize: 16, color: '#818CF8' },
+  spark2: { position: 'absolute', top: 70, left: 20, fontSize: 12, color: '#A5B4FC' },
+  spark3: { position: 'absolute', bottom: 50, right: 30, fontSize: 12, color: '#A5B4FC' },
+  robot: { position: 'relative' },
+  earL: { position: 'absolute', left: -15, top: 20, width: 18, height: 30, backgroundColor: '#94A3B8', borderRadius: 9 },
+  earR: { position: 'absolute', right: -15, top: 20, width: 18, height: 30, backgroundColor: '#94A3B8', borderRadius: 9 },
+  head: { width: 110, height: 80, backgroundColor: '#E2E8F0', borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
+  eyes: { flexDirection: 'row', gap: 20, marginBottom: 10 },
+  eye: { width: 10, height: 10, backgroundColor: '#1E293B', borderRadius: 5 },
+  mouth: { width: 35, height: 6, backgroundColor: '#1E293B', borderRadius: 3 },
+  shadow: { width: 90, height: 15, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 45, marginTop: 10 },
+
+  features: { width: '100%', paddingHorizontal: 10 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  featureIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  featureEmoji: { fontSize: 20 },
+  featureTextWrap: { flex: 1, flexDirection: 'row', flexWrap: 'wrap' },
+  featureBold: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  featureNormal: { fontSize: 15, color: '#64748B' },
+
+  summaryCard: { backgroundColor: '#EF4444', borderRadius: 16, padding: 20, marginBottom: 16 },
+  summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.9)', marginBottom: 6 },
+  summaryValue: { fontSize: 30, fontWeight: '800', color: '#FFF' },
+  expenseItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  expenseIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  expenseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
+  expenseInfo: { flex: 1 },
+  expenseName: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  expenseTime: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  expenseAmount: { fontSize: 16, fontWeight: '700', color: '#EF4444' },
+
+  fabWrap: { position: 'absolute', bottom: 110, right: 20 },
+  fab: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 28, paddingRight: 18, paddingLeft: 4, paddingVertical: 4, shadowColor: '#6366F1', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 10 },
+  fabCircle: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  fabPlus: { fontSize: 28, color: '#FFF', fontWeight: '300', marginTop: -2 },
+  fabLabel: { fontSize: 15, fontWeight: '600', color: '#0F172A', marginLeft: 10 },
+
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
+  modalBox: { flex: 1, marginTop: 50 },
+  modalGradient: { flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
+  modalClose: { fontSize: 16, color: '#3B82F6', fontWeight: '600' },
+  modalBody: { flex: 1, paddingHorizontal: 20 },
+  hintBox: { alignItems: 'center', paddingVertical: 80 },
+  hintText: { fontSize: 15, color: '#64748B', textAlign: 'center' },
+  hintBold: { color: '#0F172A', fontWeight: '600' },
+  catsWrap: { marginTop: 'auto' },
+  catsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  catChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0' },
+  catChipActive: { backgroundColor: '#EFF6FF', borderColor: '#3B82F6' },
+  catText: { fontSize: 14, color: '#64748B' },
+  catTextActive: { color: '#3B82F6', fontWeight: '600' },
+  inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 30, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 10 },
+  inputField: { flex: 1, backgroundColor: '#F1F5F9', borderRadius: 24, paddingHorizontal: 20, paddingVertical: 14, fontSize: 15, color: '#0F172A' },
+  iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+});
