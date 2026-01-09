@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
+import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors } from '../constants/theme';
 import { formatMoney } from '../utils/format';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,7 +46,8 @@ export function InvoiceDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AnimatedScreen>
+      <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Hoá đơn #{order.id}</Text>
@@ -77,7 +79,8 @@ export function InvoiceDetailScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AnimatedScreen>
   );
 }
 

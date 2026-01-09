@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,37 +37,61 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
   const [agreed, setAgreed] = useState(false);
   const [mode, setMode] = useState<'register'|'login'>('register');
   const [loginError, setLoginError] = useState('');
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const pressIn = () => {
+    Animated.timing(scaleAnim, { toValue: 0.97, duration: 80, useNativeDriver: true }).start();
+  };
+  const pressOut = () => {
+    Animated.timing(scaleAnim, { toValue: 1, duration: 120, useNativeDriver: true }).start();
+  };
 
   const handleRegister = () => {
-    if (name && phone && city && business && agreed) {
-      // persist minimal user into store with createdAt and remote Firebase
-      const userObj = { name, phone, city, business, createdAt: new Date() };
-      if (isFirebaseConfigured) {
-        (async () => {
-          try {
-            await addUserToFirebase(userObj);
-          } catch (e) {
-            console.warn('Add user to firebase failed', e);
-          }
-          setUser(userObj);
-        })();
-      } else {
-        setUser(userObj);
-      }
-      onRegister({ name, phone, city, business });
+    if (!name || !phone || !city || !business) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ thông tin trước khi đăng ký');
+      return;
     }
+    if (!agreed) {
+      Alert.alert('Chưa đồng ý', 'Vui lòng chấp nhận điều khoản để tiếp tục');
+      return;
+    }
+
+    // persist minimal user into store with createdAt and remote Firebase
+    const userObj = { name, phone, city, business, createdAt: new Date() };
+    if (isFirebaseConfigured) {
+      (async () => {
+        try {
+          await addUserToFirebase(userObj);
+        } catch (e) {
+          console.warn('Add user to firebase failed', e);
+        }
+        setUser(userObj);
+      })();
+    } else {
+      setUser(userObj);
+    }
+
+    // feedback animation
+    pressIn();
+    setTimeout(() => pressOut(), 180);
+
+    onRegister({ name, phone, city, business });
   };
 
   const handleLogin = async () => {
     setLoginError('');
     if (!phone) {
-      setLoginError('Vui lòng nhập số điện thoại');
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập số điện thoại');
       return;
     }
     const ok = await login(phone);
     if (ok) {
+      // small press feedback
+      pressIn();
+      setTimeout(() => pressOut(), 120);
       onLogin();
     } else {
+      Alert.alert('Đăng nhập thất bại', 'Không tìm thấy tài khoản với số này');
       setLoginError('Không tìm thấy tài khoản với số này');
     }
   };
@@ -236,30 +262,37 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
 
               {/* Action Button */}
               {mode === 'register' ? (
-                <TouchableOpacity 
-                  style={[styles.registerBtn, !isValid && styles.registerBtnDisabled]}
-                  onPress={handleRegister}
-                  disabled={!isValid}
-                >
-                  <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.registerBtnGradient}>
-                    <Text style={[styles.registerBtnText, !isValid && styles.registerBtnTextDisabled]}>
-                      Đăng ký
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ) : (
-                <>
-                  {loginError ? <Text style={{ color: Colors.red, marginBottom: 8 }}>{loginError}</Text> : null}
+                <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
                   <TouchableOpacity 
-                    style={[styles.registerBtn]}
-                    onPress={handleLogin}
+                    style={[styles.registerBtn, !isValid && styles.registerBtnDisabled]}
+                    onPress={handleRegister}
+                    onPressIn={pressIn}
+                    onPressOut={pressOut}
                   >
-                    <LinearGradient colors={['#F3F4F6', '#F3F4F6']} style={styles.registerBtnGradient}>
-                      <Text style={[styles.registerBtnText, { color: Colors.primary }]}>
-                        Đăng nhập
+                    <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.registerBtnGradient}>
+                      <Text style={[styles.registerBtnText, !isValid && styles.registerBtnTextDisabled]}>
+                        Đăng ký
                       </Text>
                     </LinearGradient>
                   </TouchableOpacity>
+                </Animated.View>
+              ) : (
+                <>
+                  {loginError ? <Text style={{ color: Colors.red, marginBottom: 8 }}>{loginError}</Text> : null}
+                  <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                    <TouchableOpacity 
+                      style={[styles.registerBtn]}
+                      onPress={handleLogin}
+                      onPressIn={pressIn}
+                      onPressOut={pressOut}
+                    >
+                      <LinearGradient colors={['#F3F4F6', '#F3F4F6']} style={styles.registerBtnGradient}>
+                        <Text style={[styles.registerBtnText, { color: Colors.primary }]}>
+                          Đăng nhập
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </Animated.View>
                 </>
               )}
 

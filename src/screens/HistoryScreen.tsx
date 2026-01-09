@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
+import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
 import { Order } from '../types';
 
@@ -160,7 +161,8 @@ export function HistoryScreen() {
   const paidRevenue = filteredOrders.filter(o => o.paymentStatus === 'paid').reduce((sum, o) => sum + o.totalAmount, 0);
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreen>
+      <View style={styles.container}>
       <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -240,7 +242,8 @@ export function HistoryScreen() {
           />
         )}
       </SafeAreaView>
-    </View>
+      </View>
+    </AnimatedScreen>
   );
 }
 

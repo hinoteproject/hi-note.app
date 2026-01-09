@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
+import AnimatedScreen from '../components/AnimatedScreen';
 import { parseVoiceToOrder } from '../services/orderParser';
 import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording } from '../services/voiceRecorder';
 import { Colors } from '../constants/theme';
@@ -215,7 +216,8 @@ export function SellScreen() {
   }, []);
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <AnimatedScreen>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -371,7 +373,8 @@ export function SellScreen() {
           </View>
         )}
       </SafeAreaView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </AnimatedScreen>
   );
 }
 

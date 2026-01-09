@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useStore } from '../store/useStore';
+import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
 import { BANK_CODES } from '../utils/format';
 
@@ -42,7 +43,8 @@ export function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreen>
+      <View style={styles.container}>
       <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -211,7 +213,8 @@ export function SettingsScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </AnimatedScreen>
   );
 }
 

@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
+import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors, Shadows, Fonts, Radius } from '../constants/theme';
 import { generateVietQRUrl, BANK_CODES } from '../utils/format';
 
@@ -60,7 +61,8 @@ export function PaymentScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreen>
+      <View style={styles.container}>
       <LinearGradient
         colors={[Colors.gradientStart, Colors.gradientMid, '#FFFFFF']}
         locations={[0, 0.3, 1]}
@@ -175,7 +177,8 @@ export function PaymentScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
-    </View>
+      </View>
+    </AnimatedScreen>
   );
 }
 

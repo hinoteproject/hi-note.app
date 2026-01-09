@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
+import AnimatedScreen from '../components/AnimatedScreen';
 // fallback simple date selector used when native datetimepicker is not installed
 import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
 
@@ -91,7 +92,8 @@ export function HomeScreen() {
   const goToProducts = () => navigation.navigate('Bán hàng');
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreen>
+      <View style={styles.container}>
       <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -335,38 +337,65 @@ export function HomeScreen() {
             </View>
 
             <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-              <View style={styles.simpleDateRow}>
-                <TouchableOpacity
-                  style={styles.dateAdjustBtn}
-                  onPress={() => {
-                    const d = new Date(activeCustomDate);
-                    d.setDate(d.getDate() - 1);
-                    // prevent choosing before account creation
-                    const min = user?.createdAt ? new Date(user.createdAt) : new Date(2000,0,1);
-                    min.setHours(0,0,0,0);
-                    if (d < min) return;
-                    setActiveCustomDate(d);
-                  }}
-                >
-                  <Text style={styles.adjustText}>‹</Text>
-                </TouchableOpacity>
+              <View style={{ width: '100%', alignItems: 'center' }}>
+                <View style={styles.monthRow}>
+                  <TouchableOpacity
+                    style={styles.monthBtn}
+                    onPress={() => {
+                      const d = new Date(activeCustomDate);
+                      d.setMonth(d.getMonth() - 1);
+                      const min = user?.createdAt ? new Date(user.createdAt) : new Date(2000,0,1);
+                      min.setHours(0,0,0,0);
+                      if (d < min) return;
+                      setActiveCustomDate(d);
+                    }}
+                  >
+                    <Text style={styles.adjustText}>‹</Text>
+                  </TouchableOpacity>
 
-                <View style={styles.dateDisplay}>
-                  <Text style={styles.dateDisplayText}>
-                    {activeCustomDate.toLocaleDateString()}
-                  </Text>
+                  <View style={styles.monthDisplay}>
+                    <Text style={styles.monthDisplayText}>
+                      {activeCustomDate.toLocaleString(undefined, { month: 'long' })} {activeCustomDate.getFullYear()}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.monthBtn}
+                    onPress={() => {
+                      const d = new Date(activeCustomDate);
+                      d.setMonth(d.getMonth() + 1);
+                      setActiveCustomDate(d);
+                    }}
+                  >
+                    <Text style={styles.adjustText}>›</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.dateAdjustBtn}
-                  onPress={() => {
-                    const d = new Date(activeCustomDate);
-                    d.setDate(d.getDate() + 1);
-                    setActiveCustomDate(d);
-                  }}
-                >
-                  <Text style={styles.adjustText}>›</Text>
-                </TouchableOpacity>
+                <View style={styles.yearRow}>
+                  <TouchableOpacity
+                    style={styles.yearBtn}
+                    onPress={() => {
+                      const d = new Date(activeCustomDate);
+                      d.setFullYear(d.getFullYear() - 1);
+                      const min = user?.createdAt ? new Date(user.createdAt) : new Date(2000,0,1);
+                      if (d < min) return;
+                      setActiveCustomDate(d);
+                    }}
+                  >
+                    <Text style={styles.adjustText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.yearText}>{activeCustomDate.getFullYear()}</Text>
+                  <TouchableOpacity
+                    style={styles.yearBtn}
+                    onPress={() => {
+                      const d = new Date(activeCustomDate);
+                      d.setFullYear(d.getFullYear() + 1);
+                      setActiveCustomDate(d);
+                    }}
+                  >
+                    <Text style={styles.adjustText}>+</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={{ marginTop: 16, flexDirection: 'row', gap: 12 }}>
@@ -391,7 +420,8 @@ export function HomeScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </AnimatedScreen>
   );
 }
 
@@ -623,4 +653,18 @@ const styles = StyleSheet.create({
   confirmBtn: { backgroundColor: Colors.primary },
   cancelBtn: { backgroundColor: Colors.border },
   btnText: { color: Colors.white, fontWeight: '700' },
+  monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 24 },
+  monthBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.inputBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  monthDisplay: { flex: 1, alignItems: 'center' },
+  monthDisplayText: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  yearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  yearBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: Colors.inputBg, justifyContent: 'center', alignItems: 'center', marginHorizontal: 12 },
+  yearText: { fontSize: 16, fontWeight: '700', color: Colors.text },
 });

@@ -205,17 +205,15 @@ export default function App() {
   const storeUser = useStore(state => state.user);
   const loadUserFromStorage = useStore(state => state.loadUserFromStorage);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => !!storeUser);
-  const [showWelcome, setShowWelcome] = useState(false);
-  const [userName, setUserName] = useState('');
-
+  const [userName, setUserName] = useState<string>(() => (storeUser ? storeUser.name : ''));
   React.useEffect(() => {
     if (storeUser) {
       setIsLoggedIn(true);
       setUserName(storeUser.name);
-      setShowWelcome(true);
-    } else {
+    }
+    else {
       setIsLoggedIn(false);
-      setShowWelcome(false);
+      setUserName('');
     }
   }, [storeUser]);
 
@@ -231,32 +229,20 @@ export default function App() {
   }, []);
 
   const handleRegister = (data: { name: string; phone: string; city: string; business: string }) => {
-    // store.setUser is handled inside AuthScreen; App will react to store changes
+    // store.setUser is handled inside AuthScreen; mark logged in and set name
+    setUserName(data.name);
+    setIsLoggedIn(true);
   };
 
   const handleLogin = () => {
     setIsLoggedIn(true);
   };
 
-  const handleViewInvoice = () => {
-    setShowWelcome(false);
-    setIsLoggedIn(true);
-  };
-
-  if (!isLoggedIn && !showWelcome) {
+  if (!isLoggedIn) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <AuthScreen onRegister={handleRegister} onLogin={handleLogin} />
-      </SafeAreaProvider>
-    );
-  }
-
-  if (showWelcome) {
-    return (
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <WelcomeScreen userName={userName} onViewInvoice={handleViewInvoice} />
       </SafeAreaProvider>
     );
   }
