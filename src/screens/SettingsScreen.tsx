@@ -12,12 +12,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
 import { BANK_CODES } from '../utils/format';
 
 export function SettingsScreen() {
+  const navigation = useNavigation<any>();
   const { bankAccounts, addBankAccount, setDefaultBank, user, logout } = useStore();
   const [modalVisible, setModalVisible] = useState(false);
   const [bankName, setBankName] = useState('');
@@ -105,6 +107,59 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.planArrow}>›</Text>
           </TouchableOpacity>
+
+          {/* Quick Access - New Features */}
+          <View style={styles.menuCard}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Products')}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: '#DBEAFE' }]}>
+                  <Text style={styles.menuEmoji}>📦</Text>
+                </View>
+                <Text style={styles.menuLabel}>Sản phẩm</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Customers')}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: '#F5F3FF' }]}>
+                  <Text style={styles.menuEmoji}>👥</Text>
+                </View>
+                <Text style={styles.menuLabel}>Khách hàng</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Stock')}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={styles.menuEmoji}>📊</Text>
+                </View>
+                <Text style={styles.menuLabel}>Kho hàng</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Reports')}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: '#DCFCE7' }]}>
+                  <Text style={styles.menuEmoji}>📈</Text>
+                </View>
+                <Text style={styles.menuLabel}>Báo cáo</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Notifications')}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: '#FEE2E2' }]}>
+                  <Text style={styles.menuEmoji}>🔔</Text>
+                </View>
+                <Text style={styles.menuLabel}>Thông báo</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Settings Card */}
           <View style={styles.menuCard}>

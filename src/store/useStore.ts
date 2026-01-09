@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Product, Order, OrderItem, BankAccount } from '../types';
+import { Product, Order, OrderItem, BankAccount, Customer, StockImport, Expense, AppNotification } from '../types';
 import { isFirebaseConfigured } from '../config/keys';
 import {
   addProductToFirebase,
@@ -12,9 +12,17 @@ import {
   deleteOrderFromFirebase,
   addUserToFirebase,
   getUserByPhoneFromFirebase,
+  getUserByEmailFromFirebase,
   addBankToFirebase,
   updateBankInFirebase,
   getBanksFromFirebase,
+  addCustomerToFirebase,
+  updateCustomerInFirebase,
+  deleteCustomerFromFirebase,
+  getCustomersFromFirebase,
+  addStockImportToFirebase,
+  getStockImportsFromFirebase,
+  getExpensesFromFirebase,
 } from '../services/firebaseStore';
 
 interface StoreState {
@@ -49,6 +57,28 @@ interface StoreState {
   loadBanks: () => Promise<void>;
   setBanks: (banks: BankAccount[]) => void;
 
+  // Customers
+  customers: Customer[];
+  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<void>;
+  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
+  loadCustomers: () => Promise<void>;
+
+  // Stock Imports
+  stockImports: StockImport[];
+  addStockImport: (data: Omit<StockImport, 'id' | 'createdAt'>) => Promise<void>;
+  loadStockImports: () => Promise<void>;
+
+  // Expenses
+  expenses: Expense[];
+  loadExpenses: () => Promise<void>;
+
+  // Notifications
+  notifications: AppNotification[];
+  addNotification: (notification: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+
   // Loading state
   isLoading: boolean;
   setLoading: (loading: boolean) => void;
@@ -60,12 +90,17 @@ interface StoreState {
   // User
   user: {
     name: string;
-    phone: string;
+    phone?: string;
+    email?: string;
     city?: string;
     business?: string;
     createdAt: Date;
   } | null;
-  setUser: (user: { name: string; phone: string; city?: string; business?: string; createdAt?: Date }) => void;
+  setUser: (user: { name: string; phone?: string; email?: string; city?: string; business?: string; createdAt?: Date }) => void;
+  login: (phone: string) => Promise<boolean>;
+  loginByEmail: (email: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  loadUserFromStorage: () => Promise<void>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -81,6 +116,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     const u = {
       name: user.name,
       phone: user.phone,
+      email: user.email,
       city: user.city,
       business: user.business,
       createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
@@ -332,6 +368,41 @@ export const useStore = create<StoreState>()((set, get) => ({
       // ignore
     }
   },
+  loginByEmail: async (email) => {
+    if (isFirebaseConfigured) {
+      try {
+        const remote = await getUserByEmailFromFirebase(email);
+        if (remote) {
+          set({ user: { name: remote.name, phone: remote.phone, email: remote.email, city: remote.city, business: remote.business, createdAt: remote.createdAt } });
+          try {
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            await AsyncStorage.setItem('hi_note_user', JSON.stringify(remote));
+          } catch {}
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.warn('Firebase login by email error', e);
+        return false;
+      }
+    } else {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('hi_note_user');
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (parsed.email?.toLowerCase() === email.toLowerCase()) {
+          parsed.createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date();
+          set({ user: parsed });
+          return true;
+        }
+        return false;
+      } catch (e) {
+        const { user } = get();
+        return !!(user && user.email?.toLowerCase() === email.toLowerCase());
+      }
+    }
+  },
 
   // Bank Accounts
   bankAccounts: [],
@@ -392,5 +463,96 @@ export const useStore = create<StoreState>()((set, get) => ({
         return orderDate.getTime() === today.getTime() && o.paymentStatus === 'paid';
       })
       .reduce((sum, o) => sum + o.totalAmount, 0);
+  },
+
+  // Customers
+  customers: [],
+  loadCustomers: async () => {
+    if (isFirebaseConfigured) {
+      const customers = await getCustomersFromFirebase();
+      set({ customers });
+    }
+  },
+  addCustomer: async (customer) => {
+    if (isFirebaseConfigured) {
+      const id = await addCustomerToFirebase(customer);
+      set((state) => ({
+        customers: [{ ...customer, id, createdAt: new Date() }, ...state.customers]
+      }));
+    } else {
+      set((state) => ({
+        customers: [{ ...customer, id: generateId(), createdAt: new Date() }, ...state.customers]
+      }));
+    }
+  },
+  updateCustomer: async (id, updates) => {
+    if (isFirebaseConfigured) {
+      await updateCustomerInFirebase(id, updates);
+    }
+    set((state) => ({
+      customers: state.customers.map(c => c.id === id ? { ...c, ...updates } : c)
+    }));
+  },
+  deleteCustomer: async (id) => {
+    if (isFirebaseConfigured) {
+      await deleteCustomerFromFirebase(id);
+    }
+    set((state) => ({
+      customers: state.customers.filter(c => c.id !== id)
+    }));
+  },
+
+  // Stock Imports
+  stockImports: [],
+  loadStockImports: async () => {
+    if (isFirebaseConfigured) {
+      const stockImports = await getStockImportsFromFirebase();
+      set({ stockImports });
+    }
+  },
+  addStockImport: async (data) => {
+    if (isFirebaseConfigured) {
+      const id = await addStockImportToFirebase(data);
+      set((state) => ({
+        stockImports: [{ ...data, id, createdAt: new Date() }, ...state.stockImports]
+      }));
+    } else {
+      set((state) => ({
+        stockImports: [{ ...data, id: generateId(), createdAt: new Date() }, ...state.stockImports]
+      }));
+    }
+  },
+
+  // Expenses
+  expenses: [],
+  loadExpenses: async () => {
+    if (isFirebaseConfigured) {
+      const expenses = await getExpensesFromFirebase();
+      set({ expenses });
+    }
+  },
+
+  // Notifications
+  notifications: [],
+  addNotification: (notification) => {
+    const newNotif: AppNotification = {
+      ...notification,
+      id: generateId(),
+      read: false,
+      createdAt: new Date(),
+    };
+    set((state) => ({
+      notifications: [newNotif, ...state.notifications]
+    }));
+  },
+  markNotificationRead: (id) => {
+    set((state) => ({
+      notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
+    }));
+  },
+  markAllNotificationsRead: () => {
+    set((state) => ({
+      notifications: state.notifications.map(n => ({ ...n, read: true }))
+    }));
   },
 }));

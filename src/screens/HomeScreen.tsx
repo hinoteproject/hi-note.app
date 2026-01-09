@@ -5,28 +5,27 @@ import {
   ScrollView,
   TouchableOpacity,
   Text,
-  Modal,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
-// fallback simple date selector used when native datetimepicker is not installed
-import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
+import DatePickerModal from '../components/DatePickerModal';
+import RevenueChart from '../components/RevenueChart';
+import { Colors, Shadows } from '../constants/theme';
 
 type TimeFilter = 'today' | 'yesterday' | '7days' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom';
 
 export function HomeScreen() {
   const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState<TimeFilter>('month');
-  const [showTimeModal, setShowTimeModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const orders = useStore(state => state.orders);
   const user = useStore(state => state.user);
-  const [showCustomPicker, setShowCustomPicker] = useState(false);
-  const [activeCustomDate, setActiveCustomDate] = useState<Date>(new Date());
+  const [customDate, setCustomDate] = useState<Date>(new Date());
+  const [customMode, setCustomMode] = useState<'day' | 'month' | 'year'>('day');
 
   const getFilteredData = () => {
     const now = new Date();
@@ -45,11 +44,17 @@ export function HomeScreen() {
       switch (activeTab) {
         case 'today': return d >= today;
         case 'custom': {
-          const target = new Date(activeCustomDate);
-          target.setHours(0,0,0,0);
-          const od = new Date(d);
-          od.setHours(0,0,0,0);
-          return od.getTime() === target.getTime();
+          if (customMode === 'day') {
+            const target = new Date(customDate);
+            target.setHours(0,0,0,0);
+            const od = new Date(d);
+            od.setHours(0,0,0,0);
+            return od.getTime() === target.getTime();
+          } else if (customMode === 'month') {
+            return d.getFullYear() === customDate.getFullYear() && d.getMonth() === customDate.getMonth();
+          } else {
+            return d.getFullYear() === customDate.getFullYear();
+          }
         }
         case 'yesterday': return d >= yesterday && d < today;
         case '7days': return d >= weekAgo;
@@ -91,6 +96,22 @@ export function HomeScreen() {
   const goToExpense = () => navigation.navigate('Chi phí');
   const goToProducts = () => navigation.navigate('Bán hàng');
 
+  const getCustomLabel = () => {
+    if (customMode === 'day') {
+      return `${customDate.getDate()}/${customDate.getMonth() + 1}/${customDate.getFullYear()}`;
+    } else if (customMode === 'month') {
+      return `Tháng ${customDate.getMonth() + 1}/${customDate.getFullYear()}`;
+    } else {
+      return `Năm ${customDate.getFullYear()}`;
+    }
+  };
+
+  const handleDateSelect = (date: Date, mode: 'day' | 'month' | 'year') => {
+    setCustomDate(date);
+    setCustomMode(mode);
+    setActiveTab('custom');
+  };
+
   return (
     <AnimatedScreen>
       <View style={styles.container}>
@@ -126,11 +147,11 @@ export function HomeScreen() {
             </TouchableOpacity>
           ))}
           <TouchableOpacity
-            style={[styles.tab, !mainTabs.includes(activeTab) && styles.tabActive]}
-            onPress={() => setShowTimeModal(true)}
+            style={[styles.tab, activeTab === 'custom' && styles.tabActive]}
+            onPress={() => setShowDatePicker(true)}
           >
-            <Text style={[styles.tabText, !mainTabs.includes(activeTab) && styles.tabTextActive]}>
-              {!mainTabs.includes(activeTab) ? tabLabels[activeTab] : 'Khác'}
+            <Text style={[styles.tabText, activeTab === 'custom' && styles.tabTextActive]}>
+              {activeTab === 'custom' ? getCustomLabel() : '📅 Chọn ngày'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -180,10 +201,10 @@ export function HomeScreen() {
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>
                 {activeTab === 'custom'
-                  ? `Doanh thu ngày ${activeCustomDate.getDate().toString().padStart(2,'0')}/${(activeCustomDate.getMonth()+1).toString().padStart(2,'0')}/${activeCustomDate.getFullYear()}`
+                  ? `Doanh thu ${getCustomLabel()}`
                   : `Doanh thu ${tabLabels[activeTab].toLowerCase()}`}
               </Text>
-              <Text style={styles.statValue}>{formatMoney(revenue)}</Text>
+              <Text style={styles.statValue}>{formatMoney(revenue)}đ</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Số đơn</Text>
@@ -191,23 +212,8 @@ export function HomeScreen() {
             </View>
           </View>
 
-          {/* Illustration Section */}
-          <View style={styles.illustrationSection}>
-            <View style={styles.illustrationWrap}>
-              <View style={styles.phoneIllustration}>
-                <Text style={styles.phoneEmoji}>📱</Text>
-                <View style={styles.handEmoji}>
-                  <Text style={styles.handIcon}>👆</Text>
-                </View>
-              </View>
-              <View style={styles.coinBadge}>
-                <Text style={styles.coinEmoji}>💰</Text>
-              </View>
-            </View>
-            <Text style={styles.illustrationText}>
-              Tự động tổng hợp doanh thu, không cần ghi sổ
-            </Text>
-          </View>
+          {/* Revenue Chart */}
+          <RevenueChart orders={orders} />
 
           {/* Quick Stats Row */}
           <View style={styles.quickStatsRow}>
@@ -221,10 +227,10 @@ export function HomeScreen() {
             
             <View style={styles.quickStatCard}>
               <View style={styles.quickStatHeader}>
-                <Text style={styles.quickStatLabel}>Chênh lệch t...</Text>
+                <Text style={styles.quickStatLabel}>Chênh lệch</Text>
                 <Text style={styles.quickStatEye}>👁</Text>
               </View>
-              <Text style={styles.quickStatValueGreen}>{formatMoney(revenue)}</Text>
+              <Text style={styles.quickStatValueGreen}>{formatMoney(revenue)}đ</Text>
             </View>
           </View>
 
@@ -290,136 +296,14 @@ export function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      {/* Time Filter Modal */}
-      <Modal visible={showTimeModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thời gian</Text>
-              <TouchableOpacity onPress={() => setShowTimeModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            {Object.entries(tabLabels).map(([key, label]) => (
-              <TouchableOpacity
-                key={key}
-                style={styles.timeOption}
-                onPress={() => {
-                  if (key === 'custom') {
-                    // open custom date picker
-                    setShowCustomPicker(true);
-                  } else {
-                    setActiveTab(key as TimeFilter);
-                  }
-                  setShowTimeModal(false);
-                }}
-              >
-                <Text style={[styles.timeOptionText, activeTab === key && styles.timeOptionActive]}>
-                  {label}
-                </Text>
-                {activeTab === key && <Text style={styles.timeCheck}>✓</Text>}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </Modal>
-      {/* Custom date picker modal (fallback simple selector) */}
-      <Modal visible={showCustomPicker} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn ngày</Text>
-              <TouchableOpacity onPress={() => setShowCustomPicker(false)}>
-                <Text style={styles.modalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-              <View style={{ width: '100%', alignItems: 'center' }}>
-                <View style={styles.monthRow}>
-                  <TouchableOpacity
-                    style={styles.monthBtn}
-                    onPress={() => {
-                      const d = new Date(activeCustomDate);
-                      d.setMonth(d.getMonth() - 1);
-                      const min = user?.createdAt ? new Date(user.createdAt) : new Date(2000,0,1);
-                      min.setHours(0,0,0,0);
-                      if (d < min) return;
-                      setActiveCustomDate(d);
-                    }}
-                  >
-                    <Text style={styles.adjustText}>‹</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.monthDisplay}>
-                    <Text style={styles.monthDisplayText}>
-                      {activeCustomDate.toLocaleString(undefined, { month: 'long' })} {activeCustomDate.getFullYear()}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.monthBtn}
-                    onPress={() => {
-                      const d = new Date(activeCustomDate);
-                      d.setMonth(d.getMonth() + 1);
-                      setActiveCustomDate(d);
-                    }}
-                  >
-                    <Text style={styles.adjustText}>›</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.yearRow}>
-                  <TouchableOpacity
-                    style={styles.yearBtn}
-                    onPress={() => {
-                      const d = new Date(activeCustomDate);
-                      d.setFullYear(d.getFullYear() - 1);
-                      const min = user?.createdAt ? new Date(user.createdAt) : new Date(2000,0,1);
-                      if (d < min) return;
-                      setActiveCustomDate(d);
-                    }}
-                  >
-                    <Text style={styles.adjustText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.yearText}>{activeCustomDate.getFullYear()}</Text>
-                  <TouchableOpacity
-                    style={styles.yearBtn}
-                    onPress={() => {
-                      const d = new Date(activeCustomDate);
-                      d.setFullYear(d.getFullYear() + 1);
-                      setActiveCustomDate(d);
-                    }}
-                  >
-                    <Text style={styles.adjustText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={{ marginTop: 16, flexDirection: 'row', gap: 12 }}>
-                <TouchableOpacity
-                  style={[styles.btn, styles.confirmBtn]}
-                  onPress={() => {
-                    setActiveTab('custom');
-                    setShowCustomPicker(false);
-                    setShowTimeModal(false);
-                  }}
-                >
-                  <Text style={styles.btnText}>Chọn</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btn, styles.cancelBtn]}
-                  onPress={() => setShowCustomPicker(false)}
-                >
-                  <Text style={styles.btnText}>Huỷ</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Date Picker Modal */}
+      <DatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onSelect={handleDateSelect}
+        initialDate={customDate}
+        minDate={user?.createdAt ? new Date(user.createdAt) : undefined}
+      />
       </View>
     </AnimatedScreen>
   );
@@ -465,7 +349,7 @@ const styles = StyleSheet.create({
 
   tabsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
   tab: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: Colors.white,
@@ -473,7 +357,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   tabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tabText: { fontSize: 13, fontWeight: '500', color: Colors.textSecondary },
+  tabText: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
   tabTextActive: { color: Colors.white, fontWeight: '600' },
 
   content: { flex: 1, paddingHorizontal: 16 },
@@ -517,11 +401,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 16,
-    borderWidth: 0,
     ...Shadows.card,
   },
   statLabel: { fontSize: 13, color: Colors.textSecondary, marginBottom: 8 },
-  statValue: { fontSize: 28, fontWeight: '700', color: Colors.primary },
+  statValue: { fontSize: 26, fontWeight: '700', color: Colors.primary },
 
   illustrationSection: { alignItems: 'center', paddingVertical: 24 },
   illustrationWrap: { position: 'relative', marginBottom: 16 },
@@ -554,7 +437,28 @@ const styles = StyleSheet.create({
   quickStatArrow: { fontSize: 16, color: Colors.textMuted },
   quickStatEye: { fontSize: 14 },
   quickStatAction: { fontSize: 15, fontWeight: '600', color: Colors.primary },
-  quickStatValueGreen: { fontSize: 24, fontWeight: '700', color: Colors.green },
+  quickStatValueGreen: { fontSize: 22, fontWeight: '700', color: Colors.green },
+
+  threeDayCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+  },
+  threeDayTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12, color: Colors.text },
+  threeDayList: {},
+  threeDayRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    paddingVertical: 10, 
+    borderTopWidth: 1, 
+    borderTopColor: Colors.borderLight 
+  },
+  threeDayDate: { fontSize: 13, color: Colors.textSecondary, flex: 1 },
+  threeDayValue: { fontSize: 13, fontWeight: '700', color: Colors.text, flex: 1, textAlign: 'center' },
+  threeDayCount: { fontSize: 13, color: Colors.textSecondary, flex: 1, textAlign: 'right' },
 
   bestSellersCard: {
     backgroundColor: Colors.white,
@@ -563,21 +467,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  threeDayCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 16,
-    marginHorizontal: 2,
-  },
-  threeDayTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8, color: Colors.text },
-  threeDayList: { },
-  threeDayRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: Colors.borderLight },
-  threeDayDate: { fontSize: 13, color: Colors.textSecondary, flex: 1 },
-  threeDayValue: { fontSize: 13, fontWeight: '700', color: Colors.text, flex: 1, textAlign: 'center' },
-  threeDayCount: { fontSize: 13, color: Colors.textSecondary, flex: 1, textAlign: 'right' },
   bestSellersTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 20 },
   emptyBestSellers: { alignItems: 'center', paddingVertical: 20 },
   shopIllustration: { position: 'relative', marginBottom: 16 },
@@ -594,77 +483,4 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   addProductText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
-  modalClose: { fontSize: 20, color: Colors.textMuted, padding: 4 },
-  timeOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  timeOptionText: { fontSize: 16, color: Colors.text },
-  timeOptionActive: { color: Colors.primary, fontWeight: '600' },
-  timeCheck: { fontSize: 18, color: Colors.primary },
-  /* simple date picker styles */
-  simpleDateRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dateAdjustBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.inputBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  adjustText: { fontSize: 24, color: Colors.text },
-  dateDisplay: { paddingHorizontal: 16 },
-  dateDisplayText: { fontSize: 16, fontWeight: '700', color: Colors.text },
-  btn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  confirmBtn: { backgroundColor: Colors.primary },
-  cancelBtn: { backgroundColor: Colors.border },
-  btnText: { color: Colors.white, fontWeight: '700' },
-  monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 24 },
-  monthBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.inputBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  monthDisplay: { flex: 1, alignItems: 'center' },
-  monthDisplayText: { fontSize: 16, fontWeight: '700', color: Colors.text },
-  yearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  yearBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: Colors.inputBg, justifyContent: 'center', alignItems: 'center', marginHorizontal: 12 },
-  yearText: { fontSize: 16, fontWeight: '700', color: Colors.text },
 });

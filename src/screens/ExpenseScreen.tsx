@@ -11,16 +11,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
   addExpenseToFirebase, 
   getExpensesFromFirebase,
+  subscribeToExpenses,
   Expense 
 } from '../services/firebaseStore';
 import { isFirebaseConfigured } from '../config/keys';
+import { Colors, Shadows } from '../constants/theme';
+import AnimatedScreen from '../components/AnimatedScreen';
 
 export function ExpenseScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -34,22 +36,28 @@ export function ExpenseScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const categories = [
-    { key: 'import', label: 'Nhập hàng' },
-    { key: 'salary', label: 'Lương' },
-    { key: 'rent', label: 'Mặt bằng' },
-    { key: 'electric', label: 'Điện' },
-    { key: 'water', label: 'Nước' },
-    { key: 'internet', label: 'Internet' },
-    { key: 'other', label: 'Khác' },
+    { key: 'import', label: 'Nhập hàng', icon: '📦' },
+    { key: 'salary', label: 'Lương', icon: '💼' },
+    { key: 'rent', label: 'Mặt bằng', icon: '🏠' },
+    { key: 'electric', label: 'Điện', icon: '⚡' },
+    { key: 'water', label: 'Nước', icon: '💧' },
+    { key: 'internet', label: 'Internet', icon: '📶' },
+    { key: 'other', label: 'Khác', icon: '📝' },
   ];
 
   // Load expenses từ Firebase
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    
     const loadExpenses = async () => {
       if (isFirebaseConfigured) {
         try {
           const data = await getExpensesFromFirebase();
           setExpenses(data);
+          // Subscribe to realtime updates
+          unsubscribe = subscribeToExpenses((newExpenses) => {
+            setExpenses(newExpenses);
+          });
         } catch (error) {
           console.error('Error loading expenses:', error);
         }
@@ -57,6 +65,10 @@ export function ExpenseScreen() {
       setIsLoading(false);
     };
     loadExpenses();
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -131,12 +143,14 @@ export function ExpenseScreen() {
   const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   return (
+    <AnimatedScreen>
     <View style={styles.container}>
       <LinearGradient colors={['#E8F4FE', '#EEF2FF', '#F8FAFC']} style={StyleSheet.absoluteFill} />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.title}>Chi phí</Text>
+          <Text style={styles.subTitle}>Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()}</Text>
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -234,56 +248,49 @@ export function ExpenseScreen() {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Thêm chi phí</Text>
                   <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                    <Text style={styles.modalClose}>Đóng</Text>
+                    <Text style={styles.modalClose}>✕</Text>
                   </TouchableOpacity>
                 </View>
 
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                   <View style={styles.modalBody}>
                     <View style={styles.hintBox}>
+                      <Text style={styles.hintIcon}>💡</Text>
                       <Text style={styles.hintText}>
-                        Bạn có thể đọc '<Text style={styles.hintBold}>Mua cam 500k</Text>' để thêm chi phí
+                        Nhập tên + số tiền, ví dụ: <Text style={styles.hintBold}>Mua cam 500k</Text>
                       </Text>
                     </View>
 
+                    <Text style={styles.catLabel}>Danh mục</Text>
                     <View style={styles.catsWrap}>
-                      <View style={styles.catsRow}>
-                        {categories.slice(0, 3).map((c) => (
-                          <TouchableOpacity
-                            key={c.key}
-                            style={[styles.catChip, selectedCategory === c.key && styles.catChipActive]}
-                            onPress={() => setSelectedCategory(selectedCategory === c.key ? '' : c.key)}
-                          >
-                            <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                      <View style={styles.catsRow}>
-                        {categories.slice(3).map((c) => (
-                          <TouchableOpacity
-                            key={c.key}
-                            style={[styles.catChip, selectedCategory === c.key && styles.catChipActive]}
-                            onPress={() => setSelectedCategory(selectedCategory === c.key ? '' : c.key)}
-                          >
-                            <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                      {categories.map((c) => (
+                        <TouchableOpacity
+                          key={c.key}
+                          style={[styles.catChip, selectedCategory === c.key && styles.catChipActive]}
+                          onPress={() => setSelectedCategory(selectedCategory === c.key ? '' : c.key)}
+                        >
+                          <Text style={styles.catIcon}>{c.icon}</Text>
+                          <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   </View>
 
                   <View style={styles.inputBar}>
                     <TextInput
                       style={styles.inputField}
-                      placeholder="Nhập tên khoản chi + s..."
+                      placeholder="Nhập tên khoản chi + số tiền..."
                       placeholderTextColor="#94A3B8"
                       value={inputText}
                       onChangeText={setInputText}
                       onSubmitEditing={handleAddExpense}
                       autoFocus
                     />
-                    <TouchableOpacity style={styles.iconBtn}><Text>🎤</Text></TouchableOpacity>
-                    <TouchableOpacity style={styles.iconBtn}><Text>📷</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.sendBtn} onPress={handleAddExpense}>
+                      <LinearGradient colors={['#818CF8', '#6366F1']} style={styles.sendBtnGradient}>
+                        <Text style={styles.sendBtnText}>Thêm</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
                   </View>
                 </KeyboardAvoidingView>
               </SafeAreaView>
@@ -292,6 +299,7 @@ export function ExpenseScreen() {
         </View>
       </Modal>
     </View>
+    </AnimatedScreen>
   );
 }
 
@@ -299,8 +307,9 @@ export function ExpenseScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   safeArea: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingVertical: 12 },
-  title: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
+  header: { paddingHorizontal: 20, paddingVertical: 16 },
+  title: { fontSize: 28, fontWeight: '800', color: Colors.text },
+  subTitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
   content: { flex: 1, paddingHorizontal: 20 },
 
   emptyState: { alignItems: 'center', paddingTop: 30 },
@@ -325,43 +334,94 @@ const styles = StyleSheet.create({
   featureIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   featureEmoji: { fontSize: 20 },
   featureTextWrap: { flex: 1, flexDirection: 'row', flexWrap: 'wrap' },
-  featureBold: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  featureNormal: { fontSize: 15, color: '#64748B' },
+  featureBold: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  featureNormal: { fontSize: 15, color: Colors.textSecondary },
 
-  summaryCard: { backgroundColor: '#EF4444', borderRadius: 16, padding: 20, marginBottom: 16 },
+  summaryCard: { backgroundColor: Colors.red, borderRadius: 16, padding: 20, marginBottom: 16, ...Shadows.card },
   summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.9)', marginBottom: 6 },
   summaryValue: { fontSize: 30, fontWeight: '800', color: '#FFF' },
-  expenseItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  expenseIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  expenseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
+  
+  expenseItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.white, 
+    borderRadius: 16, 
+    padding: 16, 
+    marginBottom: 10, 
+    ...Shadows.card,
+  },
+  expenseIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.redBg, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  expenseDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.red },
   expenseInfo: { flex: 1 },
-  expenseName: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
-  expenseTime: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
-  expenseAmount: { fontSize: 16, fontWeight: '700', color: '#EF4444' },
+  expenseName: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  expenseTime: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  expenseAmount: { fontSize: 16, fontWeight: '700', color: Colors.red },
 
   fabWrap: { position: 'absolute', bottom: 110, right: 20 },
-  fab: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 28, paddingRight: 18, paddingLeft: 4, paddingVertical: 4, shadowColor: '#6366F1', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 10 },
+  fab: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.white, 
+    borderRadius: 28, 
+    paddingRight: 18, 
+    paddingLeft: 4, 
+    paddingVertical: 4, 
+    ...Shadows.purple,
+  },
   fabCircle: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
   fabPlus: { fontSize: 28, color: '#FFF', fontWeight: '300', marginTop: -2 },
-  fabLabel: { fontSize: 15, fontWeight: '600', color: '#0F172A', marginLeft: 10 },
+  fabLabel: { fontSize: 15, fontWeight: '600', color: Colors.text, marginLeft: 10 },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
-  modalBox: { flex: 1, marginTop: 50 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalBox: { flex: 1, marginTop: 80 },
   modalGradient: { flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
-  modalClose: { fontSize: 16, color: '#3B82F6', fontWeight: '600' },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
+  modalClose: { fontSize: 20, color: Colors.textMuted, padding: 4 },
   modalBody: { flex: 1, paddingHorizontal: 20 },
-  hintBox: { alignItems: 'center', paddingVertical: 80 },
-  hintText: { fontSize: 15, color: '#64748B', textAlign: 'center' },
-  hintBold: { color: '#0F172A', fontWeight: '600' },
-  catsWrap: { marginTop: 'auto' },
-  catsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  catChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0' },
-  catChipActive: { backgroundColor: '#EFF6FF', borderColor: '#3B82F6' },
-  catText: { fontSize: 14, color: '#64748B' },
-  catTextActive: { color: '#3B82F6', fontWeight: '600' },
-  inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 30, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 10 },
-  inputField: { flex: 1, backgroundColor: '#F1F5F9', borderRadius: 24, paddingHorizontal: 20, paddingVertical: 14, fontSize: 15, color: '#0F172A' },
-  iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  
+  hintBox: { 
+    flexDirection: 'row',
+    alignItems: 'center', 
+    backgroundColor: Colors.primaryBg, 
+    padding: 16, 
+    borderRadius: 12, 
+    marginBottom: 24,
+  },
+  hintIcon: { fontSize: 20, marginRight: 12 },
+  hintText: { fontSize: 14, color: Colors.textSecondary, flex: 1 },
+  hintBold: { color: Colors.text, fontWeight: '600' },
+  
+  catLabel: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary, marginBottom: 12 },
+  catsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catChip: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14, 
+    paddingVertical: 10, 
+    borderRadius: 20, 
+    backgroundColor: Colors.white, 
+    borderWidth: 1, 
+    borderColor: Colors.border,
+  },
+  catChipActive: { backgroundColor: Colors.primaryBg, borderColor: Colors.primary },
+  catIcon: { fontSize: 14, marginRight: 6 },
+  catText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  catTextActive: { color: Colors.primary, fontWeight: '600' },
+  
+  inputBar: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    paddingBottom: 30, 
+    backgroundColor: Colors.white, 
+    borderTopWidth: 1, 
+    borderTopColor: Colors.borderLight, 
+    gap: 10,
+  },
+  inputField: { flex: 1, backgroundColor: Colors.inputBg, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 14, fontSize: 15, color: Colors.text },
+  sendBtn: { borderRadius: 24, overflow: 'hidden' },
+  sendBtnGradient: { paddingHorizontal: 20, paddingVertical: 14 },
+  sendBtnText: { fontSize: 14, fontWeight: '600', color: Colors.white },
 });

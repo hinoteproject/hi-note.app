@@ -1,18 +1,25 @@
-import React, { ReactNode, useRef } from 'react';
+import React, { useRef } from 'react';
 import { TouchableOpacity, Animated, Text, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
+import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
 
 interface Props {
-  children?: ReactNode;
   title?: string;
   onPress?: () => void;
   disabled?: boolean;
   style?: ViewStyle;
-  variant?: 'primary' | 'ghost';
+  variant?: 'primary' | 'ghost' | 'danger' | 'success';
+  icon?: string;
 }
 
-export default function AnimatedButton({ children, title, onPress, disabled, style, variant = 'primary' }: Props) {
+export default function AnimatedButton({ 
+  title, 
+  onPress, 
+  disabled, 
+  style, 
+  variant = 'primary',
+  icon,
+}: Props) {
   const scale = useRef(new Animated.Value(1)).current;
 
   const pressIn = () => {
@@ -22,16 +29,40 @@ export default function AnimatedButton({ children, title, onPress, disabled, sty
     Animated.timing(scale, { toValue: 1, duration: 120, useNativeDriver: true }).start();
   };
 
+  const getGradientColors = (): [string, string] => {
+    switch (variant) {
+      case 'danger':
+        return [Colors.red, '#DC2626'];
+      case 'success':
+        return [Colors.greenLight, Colors.green];
+      case 'ghost':
+        return [Colors.white, Colors.white];
+      default:
+        return [Colors.primaryLight, Colors.primary];
+    }
+  };
+
+  const getTextColor = () => {
+    if (disabled) return Colors.textMuted;
+    if (variant === 'ghost') return Colors.primary;
+    return Colors.white;
+  };
+
   const content = (
     <Animated.View style={[{ transform: [{ scale }] }, styles.inner, style]}>
-      {variant === 'primary' ? (
-        <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.gradient}>
-          <Text style={styles.primaryText}>{title}</Text>
-        </LinearGradient>
-      ) : (
-        <Animated.View style={styles.ghost}>
-          <Text style={[styles.primaryText, styles.ghostText]}>{title}</Text>
+      {variant === 'ghost' ? (
+        <Animated.View style={[styles.ghost, disabled && styles.ghostDisabled]}>
+          {icon && <Text style={styles.icon}>{icon}</Text>}
+          <Text style={[styles.text, { color: getTextColor() }]}>{title}</Text>
         </Animated.View>
+      ) : (
+        <LinearGradient 
+          colors={disabled ? [Colors.border, Colors.border] : getGradientColors()} 
+          style={styles.gradient}
+        >
+          {icon && <Text style={styles.icon}>{icon}</Text>}
+          <Text style={[styles.text, { color: getTextColor() }]}>{title}</Text>
+        </LinearGradient>
       )}
     </Animated.View>
   );
@@ -55,23 +86,33 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   gradient: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing.xl,
-    alignItems: 'center',
   },
-  primaryText: {
-    color: Colors.white,
+  text: {
     fontSize: Fonts.md,
     fontWeight: '700',
   },
+  icon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
   ghost: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing.xl,
-    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.lg,
   },
-  ghostText: {
-    color: Colors.primary,
+  ghostDisabled: {
+    backgroundColor: Colors.inputBg,
+    borderColor: Colors.borderLight,
   },
 });
-
-

@@ -16,6 +16,12 @@ import { PaymentScreen } from './src/screens/PaymentScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { InvoiceDetailScreen } from './src/screens/InvoiceDetail';
+import { ProductsScreen } from './src/screens/ProductsScreen';
+import { CustomersScreen } from './src/screens/CustomersScreen';
+import { ReportsScreen } from './src/screens/ReportsScreen';
+import { StockScreen } from './src/screens/StockScreen';
+import { NotificationsScreen } from './src/screens/NotificationsScreen';
+import WelcomeModal from './src/components/WelcomeModal';
 import { Colors } from './src/constants/theme';
 import { useStore } from './src/store/useStore';
 
@@ -206,6 +212,8 @@ export default function App() {
   const loadUserFromStorage = useStore(state => state.loadUserFromStorage);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => !!storeUser);
   const [userName, setUserName] = useState<string>(() => (storeUser ? storeUser.name : ''));
+  const [showWelcome, setShowWelcome] = useState(false);
+
   React.useEffect(() => {
     if (storeUser) {
       setIsLoggedIn(true);
@@ -228,9 +236,10 @@ export default function App() {
     })();
   }, []);
 
-  const handleRegister = (data: { name: string; phone: string; city: string; business: string }) => {
+  const handleRegister = (data: { name: string; email: string; phone?: string; city: string; business: string }) => {
     // store.setUser is handled inside AuthScreen; mark logged in and set name
     setUserName(data.name);
+    setShowWelcome(true); // Show welcome modal
     setIsLoggedIn(true);
   };
 
@@ -259,8 +268,20 @@ export default function App() {
             options={{ presentation: 'modal' }}
           />
           <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
+          <Stack.Screen name="Products" component={ProductsScreen} />
+          <Stack.Screen name="Customers" component={CustomersScreen} />
+          <Stack.Screen name="Reports" component={ReportsScreen} />
+          <Stack.Screen name="Stock" component={StockScreen} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
+      
+      {/* Welcome Modal for new users */}
+      <WelcomeModal 
+        visible={showWelcome} 
+        userName={userName} 
+        onClose={() => setShowWelcome(false)} 
+      />
     </SafeAreaProvider>
   );
 }
