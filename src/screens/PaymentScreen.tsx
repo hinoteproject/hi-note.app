@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
+import AnimatedButton from '../components/AnimatedButton';
 import { Colors, Shadows, Fonts, Radius } from '../constants/theme';
 import { generateVietQRUrl, BANK_CODES } from '../utils/format';
 
