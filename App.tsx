@@ -15,7 +15,9 @@ import { SellScreen } from './src/screens/SellScreen';
 import { PaymentScreen } from './src/screens/PaymentScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
+import { InvoiceDetailScreen } from './src/screens/InvoiceDetail';
 import { Colors } from './src/constants/theme';
+import { useStore } from './src/store/useStore';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -200,13 +202,36 @@ function TabNavigator() {
 }
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const storeUser = useStore(state => state.user);
+  const loadUserFromStorage = useStore(state => state.loadUserFromStorage);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => !!storeUser);
   const [showWelcome, setShowWelcome] = useState(false);
   const [userName, setUserName] = useState('');
 
+  React.useEffect(() => {
+    if (storeUser) {
+      setIsLoggedIn(true);
+      setUserName(storeUser.name);
+      setShowWelcome(true);
+    } else {
+      setIsLoggedIn(false);
+      setShowWelcome(false);
+    }
+  }, [storeUser]);
+
+  // try load persisted user on app start
+  React.useEffect(() => {
+    (async () => {
+      try {
+        await loadUserFromStorage();
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, []);
+
   const handleRegister = (data: { name: string; phone: string; city: string; business: string }) => {
-    setUserName(data.name);
-    setShowWelcome(true);
+    // store.setUser is handled inside AuthScreen; App will react to store changes
   };
 
   const handleLogin = () => {
@@ -247,6 +272,7 @@ export default function App() {
             component={PaymentScreen}
             options={{ presentation: 'modal' }}
           />
+          <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

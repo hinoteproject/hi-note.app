@@ -12,6 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
+import { useStore } from '../store/useStore';
+import { isFirebaseConfigured } from '../config/keys';
+import { addUserToFirebase } from '../services/firebaseStore';
 
 interface AuthScreenProps {
   onRegister: (data: { name: string; phone: string; city: string; business: string }) => void;
@@ -22,6 +25,7 @@ const cities = ['Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng'
 const businesses = ['Quán ăn', 'Cà phê', 'Tạp hóa', 'Thời trang', 'Dịch vụ', 'Khác'];
 
 export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
+  const { setUser, login } = useStore();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
@@ -29,10 +33,40 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showBusinessPicker, setShowBusinessPicker] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [mode, setMode] = useState<'register'|'login'>('register');
+  const [loginError, setLoginError] = useState('');
 
   const handleRegister = () => {
     if (name && phone && city && business && agreed) {
+      // persist minimal user into store with createdAt and remote Firebase
+      const userObj = { name, phone, city, business, createdAt: new Date() };
+      if (isFirebaseConfigured) {
+        (async () => {
+          try {
+            await addUserToFirebase(userObj);
+          } catch (e) {
+            console.warn('Add user to firebase failed', e);
+          }
+          setUser(userObj);
+        })();
+      } else {
+        setUser(userObj);
+      }
       onRegister({ name, phone, city, business });
+    }
+  };
+
+  const handleLogin = async () => {
+    setLoginError('');
+    if (!phone) {
+      setLoginError('Vui lòng nhập số điện thoại');
+      return;
+    }
+    const ok = await login(phone);
+    if (ok) {
+      onLogin();
+    } else {
+      setLoginError('Không tìm thấy tài khoản với số này');
     }
   };
 
@@ -77,28 +111,57 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
               <Text style={styles.logoText}>Hi-Note</Text>
             </View>
 
+            {/* Mode toggle */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 12 }}>
+              <TouchableOpacity onPress={() => setMode('register')}>
+                <Text style={[{ marginRight: 12, fontWeight: mode === 'register' ? '700' : '500', color: mode === 'register' ? Colors.primary : Colors.textSecondary }]}>
+                  Đăng ký
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setMode('login')}>
+                <Text style={[{ fontWeight: mode === 'login' ? '700' : '500', color: mode === 'login' ? Colors.primary : Colors.textSecondary }]}>
+                  Đăng nhập
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Form */}
             <View style={styles.formCard}>
-              <View style={styles.inputGroup}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Họ tên"
-                  placeholderTextColor={Colors.textMuted}
-                  value={name}
-                  onChangeText={setName}
-                />
-              </View>
+              {mode === 'register' ? (
+                <>
+                  <View style={styles.inputGroup}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Họ tên"
+                      placeholderTextColor={Colors.textMuted}
+                      value={name}
+                      onChangeText={setName}
+                    />
+                  </View>
 
-              <View style={styles.inputGroup}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Số điện thoại"
-                  placeholderTextColor={Colors.textMuted}
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                />
-              </View>
+                  <View style={styles.inputGroup}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Số điện thoại"
+                      placeholderTextColor={Colors.textMuted}
+                      value={phone}
+                      onChangeText={setPhone}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                </>
+              ) : (
+                <View style={styles.inputGroup}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Số điện thoại"
+                    placeholderTextColor={Colors.textMuted}
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+              )}
 
               <TouchableOpacity 
                 style={styles.inputGroup}
@@ -171,22 +234,40 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
                 </Text>
               </TouchableOpacity>
 
-              {/* Register Button */}
-              <TouchableOpacity 
-                style={[styles.registerBtn, !isValid && styles.registerBtnDisabled]}
-                onPress={handleRegister}
-                disabled={!isValid}
-              >
-                <Text style={[styles.registerBtnText, !isValid && styles.registerBtnTextDisabled]}>
-                  Đăng ký
-                </Text>
-              </TouchableOpacity>
+              {/* Action Button */}
+              {mode === 'register' ? (
+                <TouchableOpacity 
+                  style={[styles.registerBtn, !isValid && styles.registerBtnDisabled]}
+                  onPress={handleRegister}
+                  disabled={!isValid}
+                >
+                  <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.registerBtnGradient}>
+                    <Text style={[styles.registerBtnText, !isValid && styles.registerBtnTextDisabled]}>
+                      Đăng ký
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  {loginError ? <Text style={{ color: Colors.red, marginBottom: 8 }}>{loginError}</Text> : null}
+                  <TouchableOpacity 
+                    style={[styles.registerBtn]}
+                    onPress={handleLogin}
+                  >
+                    <LinearGradient colors={['#F3F4F6', '#F3F4F6']} style={styles.registerBtnGradient}>
+                      <Text style={[styles.registerBtnText, { color: Colors.primary }]}>
+                        Đăng nhập
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </>
+              )}
 
               {/* Login Link */}
               <View style={styles.loginRow}>
-                <Text style={styles.loginText}>Bạn đã có tài khoản? </Text>
-                <TouchableOpacity onPress={onLogin}>
-                  <Text style={styles.loginLink}>Đăng nhập</Text>
+                <Text style={styles.loginText}>Hoặc </Text>
+                <TouchableOpacity onPress={() => setMode(mode === 'register' ? 'login' : 'register')}>
+                  <Text style={styles.loginLink}>{mode === 'register' ? 'Đăng nhập' : 'Đăng ký'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -195,7 +276,7 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
           {/* Footer */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Một sản phẩm của </Text>
-            <Text style={styles.footerBrand}>🌿 KiotViet</Text>
+            <Text style={styles.footerBrand}>🌿 HiTeam</Text>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -385,12 +466,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   registerBtn: {
-    backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 20,
   },
+  registerBtnGradient: { borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   registerBtnDisabled: {
     backgroundColor: Colors.border,
   },

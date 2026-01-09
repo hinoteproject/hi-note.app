@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
-import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
+import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
 import { Order } from '../types';
 
 export function HistoryScreen() {
@@ -20,6 +20,8 @@ export function HistoryScreen() {
   const { orders, updateOrderPayment } = useStore();
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [selectedMode, setSelectedMode] = useState<'day'|'month'|'year'>('day');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const filters = [
     { key: 'all', label: 'Tất cả', count: orders.length },
@@ -28,8 +30,29 @@ export function HistoryScreen() {
   ];
 
   const filteredOrders = orders.filter(o => {
-    if (activeFilter === 'paid') return o.paymentStatus === 'paid';
-    if (activeFilter === 'pending') return o.paymentStatus === 'pending';
+    // filter by status
+    if (activeFilter === 'paid' && o.paymentStatus !== 'paid') return false;
+    if (activeFilter === 'pending' && o.paymentStatus !== 'pending') return false;
+
+    // filter by search text
+    if (searchText.trim()) {
+      const lower = searchText.toLowerCase();
+      if (!o.items.some(i => i.productName.toLowerCase().includes(lower)) && !(o.tableNumber || '').toLowerCase().includes(lower)) {
+        return false;
+      }
+    }
+
+    // filter by selected date/mode
+    const od = new Date(o.createdAt);
+    if (selectedMode === 'day') {
+      const a = new Date(selectedDate); a.setHours(0,0,0,0);
+      const b = new Date(od); b.setHours(0,0,0,0);
+      return a.getTime() === b.getTime();
+    } else if (selectedMode === 'month') {
+      return od.getFullYear() === selectedDate.getFullYear() && od.getMonth() === selectedDate.getMonth();
+    } else if (selectedMode === 'year') {
+      return od.getFullYear() === selectedDate.getFullYear();
+    }
     return true;
   });
 
@@ -57,7 +80,7 @@ export function HistoryScreen() {
     const isPaid = item.paymentStatus === 'paid';
     
     return (
-      <TouchableOpacity style={styles.orderCard} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.orderCard} activeOpacity={0.7} onPress={() => navigation.navigate('InvoiceDetail', { orderId: item.id })}>
         <View style={styles.orderHeader}>
           <View style={styles.orderHeaderLeft}>
             <View style={[styles.orderNumber, isPaid ? styles.orderNumberPaid : styles.orderNumberPending]}>
@@ -142,8 +165,16 @@ export function HistoryScreen() {
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>Hoá đơn</Text>
-          <TouchableOpacity style={styles.calendarBtn}>
+          <View>
+            <Text style={styles.title}>Hoá đơn</Text>
+            <Text style={styles.subTitle}>{selectedMode === 'day' ? selectedDate.toLocaleDateString() : selectedMode === 'month' ? `${selectedDate.getMonth()+1}/${selectedDate.getFullYear()}` : selectedDate.getFullYear()}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.calendarBtn}
+            onPress={() => {
+              setSelectedMode(m => m === 'day' ? 'month' : m === 'month' ? 'year' : 'day');
+            }}
+          >
             <Text style={styles.calendarIcon}>📅</Text>
           </TouchableOpacity>
         </View>
@@ -246,8 +277,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 0,
+    ...Shadows.card,
   },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
@@ -295,8 +326,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 0,
+    ...Shadows.card,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -362,4 +393,5 @@ const styles = StyleSheet.create({
   emptyBtn: { borderRadius: 24, overflow: 'hidden' },
   emptyBtnGradient: { paddingHorizontal: 24, paddingVertical: 14 },
   emptyBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600' },
+  subTitle: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
 });

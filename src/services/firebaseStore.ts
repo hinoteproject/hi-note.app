@@ -7,6 +7,7 @@ import {
   getDocs, 
   onSnapshot,
   query,
+  where,
   orderBy,
   Timestamp,
   setDoc,
@@ -19,6 +20,7 @@ const PRODUCTS_COL = 'products';
 const ORDERS_COL = 'orders';
 const BANKS_COL = 'bankAccounts';
 const EXPENSES_COL = 'expenses';
+// ... existing code ...
 
 // ==================== PRODUCTS ====================
 export async function addProductToFirebase(product: Omit<Product, 'id' | 'createdAt'>): Promise<string> {
@@ -124,6 +126,11 @@ export function subscribeToOrders(callback: (orders: Order[]) => void): () => vo
   });
 }
 
+export async function deleteOrderFromFirebase(id: string): Promise<void> {
+  if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
+  await deleteDoc(doc(db, ORDERS_COL, id));
+}
+
 // ==================== BANK ACCOUNTS ====================
 export async function addBankToFirebase(bank: Omit<BankAccount, 'id'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
@@ -206,4 +213,34 @@ export function subscribeToExpenses(callback: (expenses: Expense[]) => void): ()
     })) as Expense[];
     callback(expenses);
   });
+}
+
+// ==================== USERS ====================
+const USERS_COL = 'users';
+
+export async function addUserToFirebase(user: { name: string; phone: string; city?: string; business?: string; createdAt?: Date }): Promise<string> {
+  if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
+  const docRef = await addDoc(collection(db, USERS_COL), {
+    ...user,
+    createdAt: user.createdAt ? Timestamp.fromDate(new Date(user.createdAt)) : Timestamp.now(),
+  });
+  return docRef.id;
+}
+
+export async function getUserByPhoneFromFirebase(phone: string) : Promise<({ id: string } & any) | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  const q = query(collection(db, USERS_COL), where('phone', '==', phone));
+  const snapshot = await getDocs(q);
+  if (snapshot.docs.length === 0) return null;
+  const doc0 = snapshot.docs[0];
+  return {
+    id: doc0.id,
+    ...doc0.data(),
+    createdAt: doc0.data().createdAt?.toDate() || new Date(),
+  };
+}
+
+export async function updateUserInFirebase(id: string, updates: Partial<any>): Promise<void> {
+  if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
+  await updateDoc(doc(db, USERS_COL, id), updates);
 }

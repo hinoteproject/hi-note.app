@@ -17,7 +17,7 @@ import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
 import { BANK_CODES } from '../utils/format';
 
 export function SettingsScreen() {
-  const { bankAccounts, addBankAccount, setDefaultBank } = useStore();
+  const { bankAccounts, addBankAccount, setDefaultBank, user, logout } = useStore();
   const [modalVisible, setModalVisible] = useState(false);
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -54,8 +54,8 @@ export function SettingsScreen() {
                 <Text style={styles.avatarEmoji}>👤</Text>
               </View>
             </View>
-            <Text style={styles.userName}>Nguyễn Thanh Liêm</Text>
-            <Text style={styles.userPhone}>0384921698</Text>
+            <Text style={styles.userName}>{user?.name || 'Chủ quán'}</Text>
+            <Text style={styles.userPhone}>{user?.phone || ''}</Text>
           </View>
 
           {/* Account Card */}
@@ -80,6 +80,14 @@ export function SettingsScreen() {
                 <Text style={styles.menuLinkText}>Quét QR để vào quán khác</Text>
               </View>
             </View>
+            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => logout()}>
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: '#FEE2E2' }]}>
+                  <Text style={styles.menuEmoji}>🔓</Text>
+                </View>
+                <Text style={[styles.menuLabel, { color: Colors.red }]}>Đăng xuất</Text>
+              </View>
+            </TouchableOpacity>
           </View>
 
           {/* Plan Card */}

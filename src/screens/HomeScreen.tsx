@@ -12,7 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
-import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
+// fallback simple date selector used when native datetimepicker is not installed
+import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
 
 type TimeFilter = 'today' | 'yesterday' | '7days' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom';
 
@@ -22,6 +23,9 @@ export function HomeScreen() {
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const orders = useStore(state => state.orders);
+  const user = useStore(state => state.user);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [activeCustomDate, setActiveCustomDate] = useState<Date>(new Date());
 
   const getFilteredData = () => {
     const now = new Date();
@@ -39,6 +43,13 @@ export function HomeScreen() {
       const d = new Date(o.createdAt);
       switch (activeTab) {
         case 'today': return d >= today;
+        case 'custom': {
+          const target = new Date(activeCustomDate);
+          target.setHours(0,0,0,0);
+          const od = new Date(d);
+          od.setHours(0,0,0,0);
+          return od.getTime() === target.getTime();
+        }
         case 'yesterday': return d >= yesterday && d < today;
         case '7days': return d >= weekAgo;
         case 'month': return d >= monthStart;
@@ -165,7 +176,11 @@ export function HomeScreen() {
           {/* Stats Cards */}
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Doanh thu {tabLabels[activeTab].toLowerCase()}</Text>
+              <Text style={styles.statLabel}>
+                {activeTab === 'custom'
+                  ? `Doanh thu ngày ${activeCustomDate.getDate().toString().padStart(2,'0')}/${(activeCustomDate.getMonth()+1).toString().padStart(2,'0')}/${activeCustomDate.getFullYear()}`
+                  : `Doanh thu ${tabLabels[activeTab].toLowerCase()}`}
+              </Text>
               <Text style={styles.statValue}>{formatMoney(revenue)}</Text>
             </View>
             <View style={styles.statCard}>
@@ -211,6 +226,44 @@ export function HomeScreen() {
             </View>
           </View>
 
+          {/* 3-day Summary */}
+          <View style={styles.threeDayCard}>
+            <Text style={styles.threeDayTitle}>Thống kê 3 ngày gần nhất</Text>
+            <View style={styles.threeDayList}>
+              {(() => {
+                const now = new Date();
+                const days = [0,1,2].map(offset => {
+                  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+                  const key = d.toDateString();
+                  const dayRevenue = orders
+                    .filter(o => {
+                      if (o.paymentStatus !== 'paid') return false;
+                      const od = new Date(o.createdAt);
+                      od.setHours(0,0,0,0);
+                      return od.toDateString() === key;
+                    })
+                    .reduce((s, o) => s + o.totalAmount, 0);
+                  const dayOrders = orders.filter(o => {
+                    const od = new Date(o.createdAt);
+                    od.setHours(0,0,0,0);
+                    return od.toDateString() === key;
+                  }).length;
+                  return { date: d, revenue: dayRevenue, orders: dayOrders };
+                });
+
+                return days.map((day) => (
+                  <View key={day.date.toDateString()} style={styles.threeDayRow}>
+                    <Text style={styles.threeDayDate}>
+                      {day.date.getDate().toString().padStart(2,'0')}/{(day.date.getMonth()+1).toString().padStart(2,'0')}
+                    </Text>
+                    <Text style={styles.threeDayValue}>{formatMoney(day.revenue)}đ</Text>
+                    <Text style={styles.threeDayCount}>{day.orders} đơn</Text>
+                  </View>
+                ));
+              })()}
+            </View>
+          </View>
+
           {/* Best Sellers Section */}
           <View style={styles.bestSellersCard}>
             <Text style={styles.bestSellersTitle}>Hàng hóa bán chạy</Text>
@@ -250,7 +303,15 @@ export function HomeScreen() {
               <TouchableOpacity
                 key={key}
                 style={styles.timeOption}
-                onPress={() => { setActiveTab(key as TimeFilter); setShowTimeModal(false); }}
+                onPress={() => {
+                  if (key === 'custom') {
+                    // open custom date picker
+                    setShowCustomPicker(true);
+                  } else {
+                    setActiveTab(key as TimeFilter);
+                  }
+                  setShowTimeModal(false);
+                }}
               >
                 <Text style={[styles.timeOptionText, activeTab === key && styles.timeOptionActive]}>
                   {label}
@@ -258,6 +319,75 @@ export function HomeScreen() {
                 {activeTab === key && <Text style={styles.timeCheck}>✓</Text>}
               </TouchableOpacity>
             ))}
+          </View>
+        </View>
+      </Modal>
+      {/* Custom date picker modal (fallback simple selector) */}
+      <Modal visible={showCustomPicker} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn ngày</Text>
+              <TouchableOpacity onPress={() => setShowCustomPicker(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+              <View style={styles.simpleDateRow}>
+                <TouchableOpacity
+                  style={styles.dateAdjustBtn}
+                  onPress={() => {
+                    const d = new Date(activeCustomDate);
+                    d.setDate(d.getDate() - 1);
+                    // prevent choosing before account creation
+                    const min = user?.createdAt ? new Date(user.createdAt) : new Date(2000,0,1);
+                    min.setHours(0,0,0,0);
+                    if (d < min) return;
+                    setActiveCustomDate(d);
+                  }}
+                >
+                  <Text style={styles.adjustText}>‹</Text>
+                </TouchableOpacity>
+
+                <View style={styles.dateDisplay}>
+                  <Text style={styles.dateDisplayText}>
+                    {activeCustomDate.toLocaleDateString()}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.dateAdjustBtn}
+                  onPress={() => {
+                    const d = new Date(activeCustomDate);
+                    d.setDate(d.getDate() + 1);
+                    setActiveCustomDate(d);
+                  }}
+                >
+                  <Text style={styles.adjustText}>›</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ marginTop: 16, flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  style={[styles.btn, styles.confirmBtn]}
+                  onPress={() => {
+                    setActiveTab('custom');
+                    setShowCustomPicker(false);
+                    setShowTimeModal(false);
+                  }}
+                >
+                  <Text style={styles.btnText}>Chọn</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.cancelBtn]}
+                  onPress={() => setShowCustomPicker(false)}
+                >
+                  <Text style={styles.btnText}>Huỷ</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -357,8 +487,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 0,
+    ...Shadows.card,
   },
   statLabel: { fontSize: 13, color: Colors.textSecondary, marginBottom: 8 },
   statValue: { fontSize: 28, fontWeight: '700', color: Colors.primary },
@@ -403,6 +533,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  threeDayCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+    marginHorizontal: 2,
+  },
+  threeDayTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8, color: Colors.text },
+  threeDayList: { },
+  threeDayRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: Colors.borderLight },
+  threeDayDate: { fontSize: 13, color: Colors.textSecondary, flex: 1 },
+  threeDayValue: { fontSize: 13, fontWeight: '700', color: Colors.text, flex: 1, textAlign: 'center' },
+  threeDayCount: { fontSize: 13, color: Colors.textSecondary, flex: 1, textAlign: 'right' },
   bestSellersTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 20 },
   emptyBestSellers: { alignItems: 'center', paddingVertical: 20 },
   shopIllustration: { position: 'relative', marginBottom: 16 },
@@ -456,4 +601,26 @@ const styles = StyleSheet.create({
   timeOptionText: { fontSize: 16, color: Colors.text },
   timeOptionActive: { color: Colors.primary, fontWeight: '600' },
   timeCheck: { fontSize: 18, color: Colors.primary },
+  /* simple date picker styles */
+  simpleDateRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dateAdjustBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.inputBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  adjustText: { fontSize: 24, color: Colors.text },
+  dateDisplay: { paddingHorizontal: 16 },
+  dateDisplayText: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  btn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmBtn: { backgroundColor: Colors.primary },
+  cancelBtn: { backgroundColor: Colors.border },
+  btnText: { color: Colors.white, fontWeight: '700' },
 });

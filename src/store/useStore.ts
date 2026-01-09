@@ -9,6 +9,9 @@ import {
   addOrderToFirebase,
   updateOrderInFirebase,
   getOrdersFromFirebase,
+  deleteOrderFromFirebase,
+  addUserToFirebase,
+  getUserByPhoneFromFirebase,
   addBankToFirebase,
   updateBankInFirebase,
   getBanksFromFirebase,
@@ -52,6 +55,17 @@ interface StoreState {
 
   // Stats
   getTodayRevenue: () => number;
+  setCurrentOrder: (items: OrderItem[], table?: string) => void;
+  deleteOrder: (id: string) => Promise<void>;
+  // User
+  user: {
+    name: string;
+    phone: string;
+    city?: string;
+    business?: string;
+    createdAt: Date;
+  } | null;
+  setUser: (user: { name: string; phone: string; city?: string; business?: string; createdAt?: Date }) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -60,6 +74,51 @@ export const useStore = create<StoreState>()((set, get) => ({
   // Loading
   isLoading: false,
   setLoading: (loading) => set({ isLoading: loading }),
+
+  // User
+  user: null,
+  setUser: (user) => {
+    const u = {
+      name: user.name,
+      phone: user.phone,
+      city: user.city,
+      business: user.business,
+      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+    };
+    set({ user: u });
+    // If firebase configured, create user doc in firestore (best-effort)
+    (async () => {
+      try {
+        if (isFirebaseConfigured) {
+          // call addUserToFirebase to ensure remote copy
+          await addUserToFirebase(u);
+        }
+      } catch (e) {
+        // ignore remote errors
+      }
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.setItem('hi_note_user', JSON.stringify(u));
+      } catch (e) {
+        // ignore if not available
+      }
+    })();
+  },
+  loadUserFromStorage: async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('hi_note_user');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        parsed.createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date();
+        set({ user: parsed });
+      }
+    } catch (e) {
+      // ignore
+    }
+  },
 
   // Products
   products: [],
@@ -206,6 +265,72 @@ export const useStore = create<StoreState>()((set, get) => ({
         o.id === orderId ? { ...o, ...updates } : o
       )
     }));
+  },
+ 
+  setCurrentOrder: (items, table) => {
+    set({ currentOrder: items, currentTable: table || '' });
+  },
+
+  deleteOrder: async (id) => {
+    const { orders } = get();
+    if (isFirebaseConfigured) {
+      try {
+        await deleteOrderFromFirebase(id);
+      } catch (err) {
+        console.warn('Delete order failed', err);
+      }
+    }
+    set((state) => ({
+      orders: state.orders.filter(o => o.id !== id)
+    }));
+  },
+  login: async (phone) => {
+    if (isFirebaseConfigured) {
+      try {
+        const remote = await getUserByPhoneFromFirebase(phone);
+        if (remote) {
+          set({ user: { name: remote.name, phone: remote.phone, city: remote.city, business: remote.business, createdAt: remote.createdAt } });
+          // persist locally too
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            await AsyncStorage.setItem('hi_note_user', JSON.stringify(remote));
+          } catch {}
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.warn('Firebase login error', e);
+        return false;
+      }
+    } else {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('hi_note_user');
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (parsed.phone === phone) {
+          parsed.createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date();
+          set({ user: parsed });
+          return true;
+        }
+        return false;
+      } catch (e) {
+        const { user } = get();
+        return !!(user && user.phone === phone);
+      }
+    }
+  },
+  logout: async () => {
+    set({ user: null });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.removeItem('hi_note_user');
+    } catch (e) {
+      // ignore
+    }
   },
 
   // Bank Accounts
