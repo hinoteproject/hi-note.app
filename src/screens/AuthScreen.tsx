@@ -262,37 +262,20 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
 
               {/* Action Button */}
               {mode === 'register' ? (
-                <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                  <TouchableOpacity 
-                    style={[styles.registerBtn, !isValid && styles.registerBtnDisabled]}
-                    onPress={handleRegister}
-                    onPressIn={pressIn}
-                    onPressOut={pressOut}
-                  >
-                    <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.registerBtnGradient}>
-                      <Text style={[styles.registerBtnText, !isValid && styles.registerBtnTextDisabled]}>
-                        Đăng ký
-                      </Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
+                <AnimatedButton
+                  title="Đăng ký"
+                  onPress={handleRegister}
+                  disabled={!isValid}
+                  variant="primary"
+                />
               ) : (
                 <>
                   {loginError ? <Text style={{ color: Colors.red, marginBottom: 8 }}>{loginError}</Text> : null}
-                  <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                    <TouchableOpacity 
-                      style={[styles.registerBtn]}
-                      onPress={handleLogin}
-                      onPressIn={pressIn}
-                      onPressOut={pressOut}
-                    >
-                      <LinearGradient colors={['#F3F4F6', '#F3F4F6']} style={styles.registerBtnGradient}>
-                        <Text style={[styles.registerBtnText, { color: Colors.primary }]}>
-                          Đăng nhập
-                        </Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </Animated.View>
+                  <AnimatedButton
+                    title="Đăng nhập"
+                    onPress={handleLogin}
+                    variant="ghost"
+                  />
                 </>
               )}
 

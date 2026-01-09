@@ -157,23 +157,13 @@ export function PaymentScreen() {
           </View>
 
           {/* Action Buttons */}
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleTransferConfirm}>
-            <Text style={styles.primaryBtnText}>Tạo thử đơn</Text>
-          </TouchableOpacity>
+          <View style={{ marginBottom: 12 }}>
+            <AnimatedButton title="Tạo thử đơn" onPress={handleTransferConfirm} variant="primary" />
+          </View>
 
           <View style={styles.secondaryBtns}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={handleCashPayment}>
-              <Text style={styles.secondaryBtnText}>💵 Tiền mặt</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.secondaryBtn} 
-              onPress={() => {
-                clearCurrentOrder();
-                navigation.goBack();
-              }}
-            >
-              <Text style={styles.secondaryBtnText}>Huỷ đơn</Text>
-            </TouchableOpacity>
+            <AnimatedButton title="💵 Tiền mặt" onPress={handleCashPayment} variant="ghost" />
+            <AnimatedButton title="Huỷ đơn" onPress={() => { clearCurrentOrder(); navigation.goBack(); }} variant="ghost" />
           </View>
         </ScrollView>
       </SafeAreaView>
