@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +24,7 @@ import {
 import { isFirebaseConfigured } from '../config/keys';
 import { Colors, Shadows } from '../constants/theme';
 import AnimatedScreen from '../components/AnimatedScreen';
+import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording } from '../services/voiceRecorder';
 
 export function ExpenseScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -31,9 +33,12 @@ export function ExpenseScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const floatAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const recordingAnim = useRef(new Animated.Value(1)).current;
 
   const categories = [
     { key: 'import', label: 'Nhập hàng', icon: '📦' },
@@ -88,6 +93,53 @@ export function ExpenseScreen() {
       ])
     ).start();
   }, []);
+
+  // Recording animation
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingAnim, { toValue: 1.3, duration: 500, useNativeDriver: true }),
+          Animated.timing(recordingAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      recordingAnim.setValue(1);
+    }
+  }, [isRecording]);
+
+  // Cleanup recording on unmount
+  useEffect(() => {
+    return () => {
+      if (checkIsRecording()) {
+        cancelRecording();
+      }
+    };
+  }, []);
+
+  const handleMicPress = async () => {
+    if (isRecording) {
+      try {
+        setIsProcessing(true);
+        const transcribedText = await stopRecording();
+        setIsRecording(false);
+        if (transcribedText && !transcribedText.startsWith('AUDIO_URI::')) {
+          setInputText(transcribedText);
+        }
+      } catch (error: any) {
+        Alert.alert('Lỗi', error.message || 'Không thể xử lý giọng nói');
+        setIsRecording(false);
+      }
+      setIsProcessing(false);
+    } else {
+      try {
+        await startRecording();
+        setIsRecording(true);
+      } catch (error: any) {
+        Alert.alert('Lỗi', error.message || 'Không thể bắt đầu ghi âm');
+      }
+    }
+  };
 
   const formatMoney = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
 
@@ -284,14 +336,36 @@ export function ExpenseScreen() {
                       value={inputText}
                       onChangeText={setInputText}
                       onSubmitEditing={handleAddExpense}
+                      editable={!isProcessing && !isRecording}
                       autoFocus
                     />
-                    <TouchableOpacity style={styles.sendBtn} onPress={handleAddExpense}>
+                    <TouchableOpacity style={styles.micBtn} onPress={handleMicPress} disabled={isProcessing}>
+                      <Animated.View style={{ transform: [{ scale: isRecording ? recordingAnim : 1 }] }}>
+                        <LinearGradient 
+                          colors={isRecording ? ['#EF4444', '#DC2626'] : ['#A78BFA', '#8B5CF6']} 
+                          style={styles.micBtnGradient}
+                        >
+                          {isProcessing ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
+                          )}
+                        </LinearGradient>
+                      </Animated.View>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.sendBtn} onPress={handleAddExpense} disabled={isProcessing}>
                       <LinearGradient colors={['#818CF8', '#6366F1']} style={styles.sendBtnGradient}>
                         <Text style={styles.sendBtnText}>Thêm</Text>
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>
+
+                  {isRecording && (
+                    <View style={styles.recordingIndicator}>
+                      <View style={styles.recordingDot} />
+                      <Text style={styles.recordingText}>Đang nghe... Nhấn để dừng</Text>
+                    </View>
+                  )}
                 </KeyboardAvoidingView>
               </SafeAreaView>
             </LinearGradient>
@@ -421,7 +495,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inputField: { flex: 1, backgroundColor: Colors.inputBg, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 14, fontSize: 15, color: Colors.text },
+  micBtn: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
+  micBtnGradient: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  micIcon: { fontSize: 20 },
   sendBtn: { borderRadius: 24, overflow: 'hidden' },
   sendBtnGradient: { paddingHorizontal: 20, paddingVertical: 14 },
   sendBtnText: { fontSize: 14, fontWeight: '600', color: Colors.white },
+  recordingIndicator: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, backgroundColor: '#FEF2F2' },
+  recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', marginRight: 8 },
+  recordingText: { fontSize: 13, color: '#DC2626', fontWeight: '500' },
 });

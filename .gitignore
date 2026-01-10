@@ -30,8 +30,8 @@ yarn-error.*
 .idea/
 .vscode/
 
-# Env files (giữ keys.ts vì team cần dùng)
-# src/config/keys.ts
+# Env files
+src/config/keys.local.ts
 
 # Build
 build/

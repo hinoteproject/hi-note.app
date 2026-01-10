@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,30 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors, Shadows } from '../constants/theme';
 import { useStore } from '../store/useStore';
+import { getExpensesFromFirebase, Expense } from '../services/firebaseStore';
+import { isFirebaseConfigured } from '../config/keys';
 
 type Period = 'today' | 'week' | 'month' | 'year';
 
 export function ReportsScreen() {
-  const { orders, products, expenses } = useStore();
+  const { orders, products } = useStore();
   const [period, setPeriod] = useState<Period>('month');
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+
+  // Load expenses từ Firebase
+  useEffect(() => {
+    const loadExpenses = async () => {
+      if (isFirebaseConfigured) {
+        try {
+          const data = await getExpensesFromFirebase();
+          setExpenses(data);
+        } catch (error) {
+          console.error('Error loading expenses:', error);
+        }
+      }
+    };
+    loadExpenses();
+  }, []);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -55,6 +73,10 @@ export function ReportsScreen() {
     const grossProfit = revenue - costOfGoods;
     const netProfit = grossProfit - totalExpense;
 
+    // Tổng tiền chờ thanh toán
+    const pendingOrders = filteredOrders.filter(o => o.paymentStatus === 'pending');
+    const pendingAmount = pendingOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
     // Top sản phẩm
     const productSales: Record<string, { name: string; quantity: number; revenue: number }> = {};
     paidOrders.forEach(order => {
@@ -72,6 +94,7 @@ export function ReportsScreen() {
       totalOrders: filteredOrders.length,
       paidOrders: paidOrders.length,
       pendingOrders: filteredOrders.length - paidOrders.length,
+      pendingAmount,
       revenue,
       costOfGoods,
       grossProfit,
@@ -96,12 +119,16 @@ export function ReportsScreen() {
 📊 BÁO CÁO ${periodLabels[period].toUpperCase()} - HI-NOTE
 
 💰 Doanh thu: ${formatMoney(stats.revenue)}đ
-📦 Số đơn: ${stats.paidOrders} đơn
+📦 Số đơn: ${stats.paidOrders} đơn (${stats.pendingOrders} chờ TT)
 💵 TB/đơn: ${formatMoney(stats.avgOrderValue)}đ
 
-📈 Lãi gộp: ${formatMoney(stats.grossProfit)}đ
-📉 Chi phí: ${formatMoney(stats.totalExpense)}đ
-✨ Lãi ròng: ${formatMoney(stats.netProfit)}đ
+📊 CHI TIẾT:
+• Giá vốn: ${formatMoney(stats.costOfGoods)}đ
+• Lãi gộp: ${formatMoney(stats.grossProfit)}đ
+• Chi phí: ${formatMoney(stats.totalExpense)}đ
+• Chờ TT: ${formatMoney(stats.pendingAmount)}đ
+
+✨ LÃI RÒNG: ${stats.netProfit >= 0 ? '+' : ''}${formatMoney(stats.netProfit)}đ
 
 🏆 Top sản phẩm:
 ${stats.topProducts.map((p, i) => `${i + 1}. ${p.name}: ${p.quantity} cái - ${formatMoney(p.revenue)}đ`).join('\n')}
@@ -154,14 +181,27 @@ ${stats.topProducts.map((p, i) => `${i + 1}. ${p.name}: ${p.quantity} cái - ${f
             {/* Profit Cards */}
             <View style={styles.profitRow}>
               <View style={styles.profitCard}>
+                <Text style={styles.profitIcon}>💵</Text>
+                <Text style={styles.profitLabel}>Giá vốn</Text>
+                <Text style={[styles.profitValue, { color: Colors.orange }]}>{formatMoney(stats.costOfGoods)}đ</Text>
+              </View>
+              <View style={styles.profitCard}>
                 <Text style={styles.profitIcon}>📈</Text>
                 <Text style={styles.profitLabel}>Lãi gộp</Text>
                 <Text style={[styles.profitValue, { color: Colors.green }]}>{formatMoney(stats.grossProfit)}đ</Text>
               </View>
+            </View>
+
+            <View style={styles.profitRow}>
               <View style={styles.profitCard}>
                 <Text style={styles.profitIcon}>📉</Text>
                 <Text style={styles.profitLabel}>Chi phí</Text>
                 <Text style={[styles.profitValue, { color: Colors.red }]}>{formatMoney(stats.totalExpense)}đ</Text>
+              </View>
+              <View style={styles.profitCard}>
+                <Text style={styles.profitIcon}>💰</Text>
+                <Text style={styles.profitLabel}>Chờ TT</Text>
+                <Text style={[styles.profitValue, { color: Colors.orange }]}>{formatMoney(stats.pendingAmount)}đ</Text>
               </View>
             </View>
 

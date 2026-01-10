@@ -134,7 +134,12 @@ export function HomeScreen() {
         </View>
 
         {/* Time Filter Tabs */}
-        <View style={styles.tabsRow}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsRow}
+        >
           {mainTabs.map(tab => (
             <TouchableOpacity
               key={tab}
@@ -154,7 +159,7 @@ export function HomeScreen() {
               {activeTab === 'custom' ? getCustomLabel() : '📅 Chọn ngày'}
             </Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Onboarding Card */}
@@ -347,7 +352,8 @@ const styles = StyleSheet.create({
   aiBtnIcon: { fontSize: 16, marginRight: 6 },
   aiBtnText: { fontSize: 13, fontWeight: '600', color: Colors.purple },
 
-  tabsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
+  tabsScroll: { flexGrow: 0 },
+  tabsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8, alignItems: 'center' },
   tab: {
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -357,7 +363,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   tabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tabText: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
+  tabText: { fontSize: 13, fontWeight: '500', color: Colors.textSecondary },
   tabTextActive: { color: Colors.white, fontWeight: '600' },
 
   content: { flex: 1, paddingHorizontal: 16 },

@@ -1,7 +1,8 @@
 import { Product, AIParseResult } from '../types';
+import { GROQ_API_KEY } from '../config/keys';
 
 // Groq API key
-const GROQ_KEY = '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';
+const GROQ_KEY = GROQ_API_KEY;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 export async function parseVoiceToOrder(

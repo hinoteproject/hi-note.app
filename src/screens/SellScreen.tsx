@@ -18,7 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
 import { parseVoiceToOrder } from '../services/orderParser';
-import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording } from '../services/voiceRecorder';
+import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording, retryTranscribe } from '../services/voiceRecorder';
 import { Colors } from '../constants/theme';
 import { OrderItem } from '../types';
 
@@ -123,6 +123,14 @@ export function SellScreen() {
           );
         }
       }
+
+      // Nếu không nhận diện được sản phẩm nào
+      if (result.items.length === 0) {
+        Alert.alert(
+          '💡 Gợi ý',
+          `Không nhận diện được đơn hàng từ: "${text}"\n\nHãy nói theo format:\n"2 phở bò 35k, 1 cà phê 25k, bàn 3"`
+        );
+      }
     } catch (error) {
       console.error('Process error:', error);
       Alert.alert('Lỗi', 'Không thể xử lý. Vui lòng thử lại.');
@@ -145,11 +153,54 @@ export function SellScreen() {
         setIsProcessing(true);
         const transcribedText = await stopRecording();
         setIsRecording(false);
-        
+
         if (transcribedText) {
-          setInputText(transcribedText);
-          // Auto process
-          await processInput(transcribedText);
+          // special fallback marker from recorder: returns AUDIO_URI::uri when transcription failed
+          if (transcribedText.startsWith && transcribedText.startsWith('AUDIO_URI::')) {
+            const audioUri = transcribedText.replace('AUDIO_URI::', '');
+            Alert.alert('Ghi âm đã lưu', 'Không thể chuyển giọng nói thành văn bản. Bạn muốn phát lại hay thử lại chuyển giọng?', [
+              { text: 'Huỷ', style: 'cancel' },
+              {
+                text: 'Phát lại',
+                onPress: async () => {
+                  try {
+                    const { Audio } = await import('expo-av');
+                    const sound = new Audio.Sound();
+                    await sound.loadAsync({ uri: audioUri } as any);
+                    await sound.playAsync();
+                  } catch (e) {
+                    console.error('Play audio failed', e);
+                    Alert.alert('Lỗi', 'Không thể phát file ghi âm.');
+                  }
+                },
+              },
+              {
+                text: 'Thử lại',
+                onPress: async () => {
+                  // try transcription again
+                  try {
+                    setIsProcessing(true);
+                    const retryText = await retryTranscribe(audioUri);
+                    if (retryText) {
+                      setInputText(retryText);
+                      await processInput(retryText);
+                    } else {
+                      Alert.alert('Không có văn bản', 'Không nhận diện được tiếng nói.');
+                    }
+                  } catch (e) {
+                    console.error('Retry transcription failed', e);
+                    Alert.alert('Lỗi', 'Thử lại thất bại.');
+                  } finally {
+                    setIsProcessing(false);
+                  }
+                },
+              },
+            ]);
+          } else {
+            setInputText(transcribedText);
+            // Auto process
+            await processInput(transcribedText);
+          }
         }
       } catch (error: any) {
         console.error('Stop recording error:', error);

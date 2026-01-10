@@ -1,9 +1,11 @@
 import { Audio } from 'expo-av';
+import { Alert } from 'react-native';
+import { GROQ_API_KEY, isGroqConfigured } from '../config/keys';
 
 let recording: Audio.Recording | null = null;
 
-// Groq API key
-const GROQ_KEY = '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';
+// Use configured key from src/config/keys.ts
+const GROQ_KEY = (isGroqConfigured ? GROQ_API_KEY : '');
 
 export async function startRecording(): Promise<void> {
   try {
@@ -47,8 +49,20 @@ export async function stopRecording(): Promise<string> {
 
     console.log('🎤 Recording stopped, URI:', uri);
     
-    const text = await transcribeAudio(uri);
-    return text;
+    try {
+      const text = await transcribeAudio(uri);
+      return text;
+    } catch (err: any) {
+      console.error('Transcription failed:', err);
+      // notify user but don't throw so UI remains responsive
+      try {
+        Alert.alert('Lỗi ghi âm', err?.message || 'Không thể chuyển giọng nói thành văn bản');
+      } catch (e) {
+        // ignore alert errors in non-UI contexts
+      }
+      // Return special marker with audio URI so callers can fallback to play/retry
+      return `AUDIO_URI::${uri}`;
+    }
   } catch (error) {
     console.error('Stop recording error:', error);
     recording = null;
@@ -70,31 +84,120 @@ export function isRecording(): boolean {
 async function transcribeAudio(audioUri: string): Promise<string> {
   console.log('📤 Sending to Groq Whisper...');
 
-  const formData = new FormData();
-  formData.append('file', {
-    uri: audioUri,
-    type: 'audio/m4a',
-    name: 'audio.m4a',
-  } as any);
-  formData.append('model', 'whisper-large-v3');
-  formData.append('language', 'vi');
-  formData.append('response_format', 'text');
-
-  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_KEY}`,
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Groq Whisper error:', errorText);
-    throw new Error(`Lỗi transcription: ${response.status}`);
+  if (!GROQ_KEY) {
+    throw new Error('GROQ API key chưa được cấu hình. Vui lòng cập nhật src/config/keys.ts');
   }
 
-  const text = await response.text();
-  console.log('✅ Transcribed:', text);
-  return text.trim();
+  // Try RN-friendly upload first (append local uri object). This worked previously on many Expo setups.
+  const tryLocalUpload = async () => {
+    const formData = new FormData();
+    try {
+      // If the URI looks like a local file (file:// or absolute path), attach as RN file object
+      if (audioUri.startsWith('file://') || audioUri.startsWith('/')) {
+        formData.append('file', { uri: audioUri, type: 'audio/m4a', name: 'audio.m4a' } as any);
+      } else {
+        // remote url - fetch blob instead
+        const fileResp = await fetch(audioUri);
+        const blob = await fileResp.blob();
+        formData.append('file', blob as any, 'audio.m4a');
+      }
+      formData.append('model', 'whisper-large-v3');
+      formData.append('language', 'vi');
+      formData.append('response_format', 'text');
+
+      const makeRequest = async () => {
+        return await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_KEY}`,
+          },
+          body: formData,
+        });
+      };
+
+      let response = await makeRequest();
+      if (!response.ok) {
+        // single retry
+        response = await makeRequest();
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Groq Whisper error (local upload):', errorText);
+        if (response.status === 401) {
+          throw new Error('Invalid API Key (transcription service). Vui lòng kiểm tra cấu hình.');
+        }
+        throw new Error(`Lỗi transcription: ${response.status}`);
+      }
+
+      const text = await response.text();
+      console.log('✅ Transcribed (local upload):', text);
+      return text.trim();
+    } catch (e) {
+      console.warn('Local upload strategy failed, will try blob fallback:', e);
+      throw e;
+    }
+  };
+
+  // Blob fallback (if local upload fails on some platforms)
+  const tryBlobFallback = async () => {
+    try {
+      const fileResp = await fetch(audioUri);
+      const blob = await fileResp.blob();
+
+      const formData = new FormData();
+      formData.append('file', blob as any, 'audio.m4a');
+      formData.append('model', 'whisper-large-v3');
+      formData.append('language', 'vi');
+      formData.append('response_format', 'text');
+
+      const makeRequest = async () => {
+        return await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_KEY}`,
+          },
+          body: formData,
+        });
+      };
+
+      let response = await makeRequest();
+      if (!response.ok) {
+        response = await makeRequest();
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Groq Whisper error (blob fallback):', errorText);
+        if (response.status === 401) {
+          throw new Error('Invalid API Key (transcription service). Vui lòng kiểm tra cấu hình.');
+        }
+        throw new Error(`Lỗi transcription: ${response.status}`);
+      }
+
+      const text = await response.text();
+      console.log('✅ Transcribed (blob fallback):', text);
+      return text.trim();
+    } catch (err) {
+      console.error('Blob fallback failed:', err);
+      throw err;
+    }
+  };
+
+  try {
+    return await tryLocalUpload();
+  } catch (e) {
+    // If the local upload failed with a network error (common on some Android/Expo setups), try blob fallback.
+    try {
+      return await tryBlobFallback();
+    } catch (err) {
+      console.error('transcribeAudio error (both strategies):', err);
+      throw err;
+    }
+  }
+}
+
+// exported helper to retry transcription from outside (used by UI fallback)
+export async function retryTranscribe(audioUri: string): Promise<string> {
+  return await transcribeAudio(audioUri);
 }
