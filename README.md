@@ -94,22 +94,28 @@ npx expo start
 
 ## ⚙️ Cấu hình
 
-### Firebase (tùy chọn)
-Tạo project Firebase và cập nhật `src/config/keys.ts`:
+### API Keys (Hi-Team)
+Cập nhật file `src/config/keys.ts`:
 
 ```typescript
-export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+// GROQ API (Voice AI)
+export const GROQ_API_KEY = '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';
+
+// Firebase
+export const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAqxvckOL30q95zxN87vVm3ylELUTVoFCQ",
+  authDomain: "hi-note-98ff7.firebaseapp.com",
+  projectId: "hi-note-98ff7",
+  storageBucket: "hi-note-98ff7.firebasestorage.app",
+  messagingSenderId: "410025708786",
+  appId: "1:410025708786:web:7a5699a0971e14d117d46b",
 };
 ```
 
 ### EmailJS (cho OTP)
-Đăng ký tại [emailjs.com](https://emailjs.com) và cập nhật trong `src/services/emailOtp.ts`
+- Service ID: `service_dgyt6ez`
+- Template ID: `template_ztu8jw3`
+- Public Key: `IupxXr0X3EJKqgWbA`
 
 ## 📁 Cấu trúc thư mục
 
