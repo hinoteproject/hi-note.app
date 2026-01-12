@@ -38,7 +38,8 @@
         {
           "microphonePermission": "Cho phép Hi-Note truy cập microphone để ghi âm giọng nói."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {
