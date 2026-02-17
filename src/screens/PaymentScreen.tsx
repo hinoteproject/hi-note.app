@@ -1,395 +1,321 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ScrollView,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
-import AnimatedButton from '../components/AnimatedButton';
-import { Colors, Shadows, Fonts, Radius } from '../constants/theme';
+import GlassCard from '../components/GlassCard';
+import { Colors, Shadows, Gradients } from '../constants/theme';
 import { generateVietQRUrl, BANK_CODES } from '../utils/format';
+import { sendPaymentNotification, sendNewOrderNotification } from '../services/notificationService';
+import { Toast } from '../components/ToastNotification';
 
 export function PaymentScreen() {
   const navigation = useNavigation<any>();
-  const { currentOrder, currentTable, getDefaultBank, createOrder, clearCurrentOrder } = useStore();
+  const { currentOrder, currentTable, currentBillName, getDefaultBank, createOrder, clearCurrentOrder } = useStore();
+  const [loading, setLoading] = useState<'cash' | 'transfer' | null>(null);
 
   const total = currentOrder.reduce((sum, item) => sum + item.subtotal, 0);
   const bank = getDefaultBank();
 
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN').format(amount);
-  };
+  const formatMoney = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount);
 
   const formatDate = () => {
     const now = new Date();
     return now.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
     });
   };
 
   const qrUrl = bank ? generateVietQRUrl(
     BANK_CODES[bank.bankName] || 'VCB',
-    bank.accountNumber,
-    bank.accountName,
-    total,
+    bank.accountNumber, bank.accountName, total,
     `HiNote ${currentTable ? `Ban${currentTable}` : ''}`
   ) : null;
 
-  const handleCashPayment = () => {
-    createOrder('cash');
-    Alert.alert('✓ Thành công', 'Đã tạo đơn hàng!', [
-      { text: 'OK', onPress: () => navigation.navigate('Main') }
-    ]);
+  const handleCashPayment = async () => {
+    setLoading('cash');
+    try {
+      const order = await createOrder('cash');
+      const orderLabel = order.billName || (order.tableNumber ? `Bàn ${order.tableNumber}` : 'Khách lẻ');
+      await sendPaymentNotification(order.totalAmount, orderLabel);
+      Toast.show({
+        type: 'success',
+        title: '💰 Thanh toán thành công!',
+        message: `${orderLabel} — ${formatMoney(order.totalAmount)}đ tiền mặt`,
+      });
+      navigation.navigate('Main');
+    } catch (e) {
+      Toast.show({ type: 'error', message: 'Không thể tạo đơn' });
+    } finally {
+      setLoading(null);
+    }
   };
 
-  const handleTransferConfirm = () => {
-    createOrder('transfer');
-    Alert.alert('✓ Thành công', 'Đã xác nhận thanh toán!', [
-      { text: 'OK', onPress: () => navigation.navigate('Main') }
-    ]);
+  const handleTransferConfirm = async () => {
+    setLoading('transfer');
+    try {
+      const order = await createOrder('transfer');
+      const orderLabel = order.billName || (order.tableNumber ? `Bàn ${order.tableNumber}` : 'Khách lẻ');
+      await sendNewOrderNotification(orderLabel, order.items.length);
+      Toast.show({
+        type: 'info',
+        title: '📱 Đơn đang chờ chuyển khoản',
+        message: `${orderLabel} — ${formatMoney(order.totalAmount)}đ`,
+        duration: 4000,
+      });
+      navigation.navigate('Main');
+    } catch (e) {
+      Toast.show({ type: 'error', message: 'Không thể tạo đơn' });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleCancel = () => {
+    clearCurrentOrder();
+    navigation.goBack();
   };
 
   return (
     <AnimatedScreen>
       <View style={styles.container}>
-      <LinearGradient
-        colors={[Colors.gradientStart, Colors.gradientMid, '#FFFFFF']}
-        locations={[0, 0.3, 1]}
-        style={styles.gradientBg}
-      />
+        <LinearGradient colors={Gradients.header} locations={[0, 0.3, 1]} style={styles.gradientBg} />
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backBtn}>← Quay lại</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Main')}>
-            <Text style={styles.backLink}>Về trang chủ</Text>
-          </TouchableOpacity>
-        </View>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtnWrap} activeOpacity={0.7}>
+              <View style={styles.backBtnCircle}>
+                <Text style={styles.backIcon}>←</Text>
+              </View>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Thanh toán</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Main')} activeOpacity={0.7}>
+              <Text style={styles.homeLink}>🏠</Text>
+            </TouchableOpacity>
+          </View>
 
-        <ScrollView 
-          style={styles.content}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Title */}
-          <Text style={styles.title}>Mẫu hoá đơn của bạn</Text>
-          <Text style={styles.subtitle}>
-            Khi hoàn thành 1 đơn, bạn sẽ thấy hoá đơn như sau
-          </Text>
+          <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+            {/* Premium Invoice Card */}
+            <GlassCard style={styles.invoiceCard} intensity="strong" noPadding>
+              {/* Gradient top accent */}
+              <LinearGradient colors={Gradients.primary} style={styles.invoiceAccent} />
 
-          {/* Invoice Card */}
-          <View style={styles.invoiceCard}>
-            <View style={styles.invoiceHeader}>
-              <Text style={styles.customerName}>
-                {currentTable ? `Bàn ${currentTable}` : 'Khách lẻ'}
-              </Text>
-              <Text style={styles.invoiceDate}>{formatDate()}</Text>
-            </View>
-
-            {/* Items */}
-            <View style={styles.itemsSection}>
-              {currentOrder.map((item, index) => (
-                <View key={index} style={styles.invoiceItem}>
-                  <View style={styles.itemLeft}>
-                    <Text style={styles.itemName}>{item.productName}</Text>
-                    <View style={styles.itemBadge}>
-                      <Text style={styles.itemBadgeText}>💬 Chat</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.itemPrice}>{formatMoney(item.subtotal)}</Text>
-                </View>
-              ))}
-              {currentOrder.map((item, index) => (
-                <Text key={`qty-${index}`} style={styles.itemQty}>
-                  {item.quantity} x {formatMoney(item.unitPrice)}
+              <View style={styles.invoiceHeader}>
+                <Text style={styles.customerName}>
+                  {currentBillName || (currentTable ? `Bàn ${currentTable}` : 'Khách lẻ')}
                 </Text>
-              ))}
-            </View>
-
-            {/* Totals */}
-            <View style={styles.totalsSection}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Tổng tiền hàng</Text>
-                <Text style={styles.totalValue}>{formatMoney(total)}</Text>
+                <Text style={styles.invoiceDate}>{formatDate()}</Text>
               </View>
-              <View style={styles.totalRowMain}>
-                <Text style={styles.totalLabelMain}>Tổng cộng</Text>
-                <Text style={styles.totalValueMain}>{formatMoney(total)}</Text>
-              </View>
-            </View>
 
-            {/* QR Section */}
-            {bank && qrUrl && (
-              <View style={styles.qrSection}>
-                <View style={styles.qrLeft}>
-                  <Text style={styles.qrTitle}>Quét mã thanh toán</Text>
-                  <Text style={styles.qrSubtitle}>
-                    {bank.bankName} - ***{bank.accountNumber.slice(-3)}
-                  </Text>
+              {/* Items */}
+              <View style={styles.itemsSection}>
+                {currentOrder.map((item, index) => (
+                  <View key={index} style={styles.invoiceItem}>
+                    <View style={styles.itemLeft}>
+                      <Text style={styles.itemName}>{item.productName}</Text>
+                      <Text style={styles.itemQtyInline}>{item.quantity} × {formatMoney(item.unitPrice)}đ</Text>
+                    </View>
+                    <Text style={styles.itemPrice}>{formatMoney(item.subtotal)}đ</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Totals */}
+              <View style={styles.totalsSection}>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Số lượng</Text>
+                  <Text style={styles.totalValue}>{currentOrder.reduce((s, i) => s + i.quantity, 0)} món</Text>
                 </View>
-                <View style={styles.qrRight}>
-                  <Image 
-                    source={{ uri: qrUrl }}
-                    style={styles.qrImage}
-                    resizeMode="contain"
-                  />
-                  <View style={styles.qrStatus}>
-                    <Text style={styles.qrStatusIcon}>✓</Text>
-                    <Text style={styles.qrStatusText}>Đã nhận</Text>
+                <View style={styles.totalRowMain}>
+                  <Text style={styles.totalLabelMain}>Tổng cộng</Text>
+                  <Text style={styles.totalValueMain}>{formatMoney(total)}đ</Text>
+                </View>
+              </View>
+            </GlassCard>
+
+            {/* QR Section — separate card for bank transfer */}
+            {bank && qrUrl ? (
+              <GlassCard style={styles.qrCard} intensity="medium">
+                <Text style={styles.qrSectionTitle}>🔗 Quét mã thanh toán</Text>
+                <View style={styles.qrRow}>
+                  <View style={styles.qrInfo}>
+                    <Text style={styles.qrBankName}>{bank.bankName}</Text>
+                    <Text style={styles.qrAccountNum}>{bank.accountNumber}</Text>
+                    <Text style={styles.qrAccountName}>{bank.accountName}</Text>
+                  </View>
+                  <View style={styles.qrFrame}>
+                    <Image source={{ uri: qrUrl }} style={styles.qrImage} resizeMode="contain" />
                   </View>
                 </View>
-              </View>
+              </GlassCard>
+            ) : (
+              <GlassCard style={styles.noBankCard} intensity="light">
+                <Text style={styles.noBankIcon}>🏦</Text>
+                <Text style={styles.noBankText}>Chưa thiết lập tài khoản ngân hàng</Text>
+                <TouchableOpacity
+                  style={styles.noBankBtn}
+                  onPress={() => navigation.navigate('Main', { screen: 'Nhiều hơn' })}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.noBankBtnText}>Thêm tài khoản →</Text>
+                </TouchableOpacity>
+              </GlassCard>
             )}
-          </View>
 
-          {/* Action Buttons */}
-          <View style={{ marginBottom: 12 }}>
-            <AnimatedButton title="Tạo thử đơn" onPress={handleTransferConfirm} variant="primary" />
-          </View>
+            {/* Premium Action Buttons */}
+            <View style={styles.actionSection}>
+              {/* Cash Button */}
+              <TouchableOpacity activeOpacity={0.8} onPress={handleCashPayment} disabled={!!loading}>
+                <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryBtn}>
+                  {loading === 'cash' ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryBtnIcon}>💵</Text>
+                      <View>
+                        <Text style={styles.primaryBtnText}>Tiền mặt</Text>
+                        <Text style={styles.primaryBtnSub}>{formatMoney(total)}đ</Text>
+                      </View>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
 
-          <View style={styles.secondaryBtns}>
-            <AnimatedButton title="💵 Tiền mặt" onPress={handleCashPayment} variant="ghost" />
-            <AnimatedButton title="Huỷ đơn" onPress={() => { clearCurrentOrder(); navigation.goBack(); }} variant="ghost" />
-          </View>
-        </ScrollView>
-      </SafeAreaView>
+              {/* Transfer Button */}
+              <TouchableOpacity activeOpacity={0.8} onPress={handleTransferConfirm} disabled={!!loading}>
+                <LinearGradient colors={Gradients.primary} style={styles.primaryBtn}>
+                  {loading === 'transfer' ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryBtnIcon}>📱</Text>
+                      <View>
+                        <Text style={styles.primaryBtnText}>Chuyển khoản</Text>
+                        <Text style={styles.primaryBtnSub}>Tạo đơn chờ thanh toán</Text>
+                      </View>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Cancel */}
+              <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} activeOpacity={0.7}>
+                <Text style={styles.cancelText}>✕ Huỷ đơn</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
       </View>
     </AnimatedScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  gradientBg: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 300,
-  },
-  safeArea: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  gradientBg: { position: 'absolute', left: 0, right: 0, top: 0, height: 350 },
+  safeArea: { flex: 1 },
+
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 12,
   },
-  backBtn: {
-    fontSize: Fonts.base,
-    color: Colors.textSecondary,
-    fontWeight: '500',
+  backBtnWrap: {},
+  backBtnCircle: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center',
+    ...Shadows.sm,
   },
-  backLink: {
-    fontSize: Fonts.base,
-    color: Colors.primaryLight,
-    fontWeight: '500',
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: Fonts['2xl'],
-    fontWeight: '700',
-    color: Colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: Fonts.base,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  invoiceCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.xl,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.card,
-  },
+  backIcon: { fontSize: 18, color: '#334155', fontWeight: '600' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
+  homeLink: { fontSize: 22 },
+
+  content: { flex: 1 },
+  contentContainer: { paddingHorizontal: 16, paddingBottom: 40 },
+
+  // Invoice Card
+  invoiceCard: { marginBottom: 16, overflow: 'hidden' },
+  invoiceAccent: { height: 4, borderTopLeftRadius: 20, borderTopRightRadius: 20, marginBottom: 16 },
+
   invoiceHeader: {
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
+    paddingHorizontal: 20, marginBottom: 16, paddingBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
-  customerName: {
-    fontSize: Fonts.xl,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  invoiceDate: {
-    fontSize: Fonts.sm,
-    color: Colors.textMuted,
-  },
-  itemsSection: {
-    marginBottom: 16,
-  },
+  customerName: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 4, letterSpacing: -0.3 },
+  invoiceDate: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+
+  itemsSection: { paddingHorizontal: 20, marginBottom: 16 },
   invoiceItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F8FAFC',
   },
-  itemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  itemName: {
-    fontSize: Fonts.md,
-    fontWeight: '600',
-    color: Colors.text,
-    marginRight: 8,
-  },
-  itemBadge: {
-    backgroundColor: '#DBEAFE',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: Radius.sm,
-  },
-  itemBadgeText: {
-    fontSize: Fonts.xs,
-    color: Colors.primaryLight,
-  },
-  itemPrice: {
-    fontSize: Fonts.md,
-    color: Colors.text,
-  },
-  itemQty: {
-    fontSize: Fonts.sm,
-    color: Colors.textMuted,
-    marginBottom: 8,
-  },
+  itemLeft: { flex: 1, marginRight: 12 },
+  itemName: { fontSize: 15, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
+  itemQtyInline: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  itemPrice: { fontSize: 15, fontWeight: '700', color: '#334155' },
+
   totalsSection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
+    paddingHorizontal: 20, paddingVertical: 16, paddingBottom: 20,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
+    borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
   },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  totalLabel: { fontSize: 14, color: '#94A3B8', fontWeight: '500' },
+  totalValue: { fontSize: 14, color: '#334155', fontWeight: '600' },
+  totalRowMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabelMain: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  totalValueMain: { fontSize: 24, fontWeight: '900', color: Colors.primary, letterSpacing: -0.5 },
+
+  // QR Card
+  qrCard: { marginBottom: 16 },
+  qrSectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 14 },
+  qrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  qrInfo: { flex: 1, marginRight: 16 },
+  qrBankName: { fontSize: 15, fontWeight: '700', color: '#1E293B', marginBottom: 4 },
+  qrAccountNum: { fontSize: 14, color: '#64748B', fontWeight: '600', marginBottom: 2 },
+  qrAccountName: { fontSize: 13, color: '#94A3B8', fontWeight: '500' },
+  qrFrame: {
+    padding: 8, borderRadius: 16, backgroundColor: '#FFF',
+    borderWidth: 2, borderColor: Colors.primary,
+    ...Shadows.sm,
   },
-  totalLabel: {
-    fontSize: Fonts.base,
-    color: Colors.textSecondary,
-  },
-  totalValue: {
-    fontSize: Fonts.base,
-    color: Colors.text,
-  },
-  totalRowMain: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  totalLabelMain: {
-    fontSize: Fonts.md,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  totalValueMain: {
-    fontSize: Fonts['2xl'],
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  qrSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-  },
-  qrLeft: {},
-  qrTitle: {
-    fontSize: Fonts.md,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  qrSubtitle: {
-    fontSize: Fonts.sm,
-    color: Colors.textMuted,
-  },
-  qrRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  qrImage: {
-    width: 60,
-    height: 60,
-    borderRadius: Radius.md,
-    marginRight: 12,
-  },
-  qrStatus: {
-    alignItems: 'center',
-  },
-  qrStatusIcon: {
-    fontSize: 20,
-    color: Colors.green,
-  },
-  qrStatusText: {
-    fontSize: Fonts.xs,
-    color: Colors.green,
-    marginTop: 2,
-  },
+  qrImage: { width: 100, height: 100, borderRadius: 8 },
+
+  // No bank
+  noBankCard: { marginBottom: 16, alignItems: 'center', paddingVertical: 24 },
+  noBankIcon: { fontSize: 32, marginBottom: 8 },
+  noBankText: { fontSize: 14, color: '#64748B', fontWeight: '500', marginBottom: 12 },
+  noBankBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: Colors.primaryBg },
+  noBankBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+
+  // Action Buttons
+  actionSection: { gap: 12, marginTop: 8 },
   primaryBtn: {
-    backgroundColor: Colors.primaryLight,
-    paddingVertical: 18,
-    borderRadius: Radius.lg,
-    alignItems: 'center',
-    marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 18, paddingHorizontal: 24,
+    borderRadius: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15, shadowRadius: 12, elevation: 6,
   },
-  primaryBtnText: {
-    color: Colors.white,
-    fontSize: Fonts.md,
-    fontWeight: '600',
+  primaryBtnIcon: { fontSize: 28, marginRight: 16 },
+  primaryBtnText: { fontSize: 17, fontWeight: '800', color: '#FFF' },
+  primaryBtnSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '500', marginTop: 2 },
+
+  cancelBtn: {
+    alignItems: 'center', paddingVertical: 14,
+    borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.04)',
   },
-  secondaryBtns: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  secondaryBtn: {
-    flex: 1,
-    backgroundColor: Colors.white,
-    paddingVertical: 14,
-    borderRadius: Radius.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  secondaryBtnText: {
-    color: Colors.textSecondary,
-    fontSize: Fonts.base,
-    fontWeight: '500',
-  },
+  cancelText: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
 });

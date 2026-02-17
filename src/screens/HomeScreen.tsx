@@ -1,19 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Text,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
+import GlassCard from '../components/GlassCard';
+import AnimatedNumber from '../components/AnimatedNumber';
 import DatePickerModal from '../components/DatePickerModal';
 import RevenueChart from '../components/RevenueChart';
-import { Colors, Shadows } from '../constants/theme';
+import { Colors, Gradients, Shadows } from '../constants/theme';
 
 type TimeFilter = 'today' | 'yesterday' | '7days' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom';
 
@@ -27,52 +30,95 @@ export function HomeScreen() {
   const [customDate, setCustomDate] = useState<Date>(new Date());
   const [customMode, setCustomMode] = useState<'day' | 'month' | 'year'>('day');
 
+  // Staggered animation for cards
+  const cardAnims = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
+  useEffect(() => {
+    const anims = cardAnims.map((anim, i) =>
+      Animated.timing(anim, { toValue: 1, duration: 400, delay: 100 + i * 80, useNativeDriver: true })
+    );
+    Animated.stagger(80, anims).start();
+  }, []);
+
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return { text: 'Chào buổi sáng', emoji: '☀️' };
+    if (h < 18) return { text: 'Chào buổi chiều', emoji: '🌤️' };
+    return { text: 'Chào buổi tối', emoji: '🌙' };
+  };
+  const greeting = getGreeting();
+
   const getFilteredData = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 86400000);
     const weekAgo = new Date(today.getTime() - 7 * 86400000);
+    const twoWeeksAgo = new Date(today.getTime() - 14 * 86400000);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const twoMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
     const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    const filtered = orders.filter(o => {
-      if (o.paymentStatus !== 'paid') return false;
-      const d = new Date(o.createdAt);
-      switch (activeTab) {
-        case 'today': return d >= today;
-        case 'custom': {
+    const paidOrders = orders.filter(o => o.paymentStatus === 'paid');
+    const filterByRange = (start: Date, end?: Date) =>
+      paidOrders.filter(o => {
+        const d = new Date(o.createdAt);
+        return end ? (d >= start && d < end) : (d >= start);
+      });
+
+    let currentFiltered: typeof paidOrders = [];
+    let prevFiltered: typeof paidOrders = [];
+
+    switch (activeTab) {
+      case 'today':
+        currentFiltered = filterByRange(today);
+        prevFiltered = filterByRange(yesterday, today);
+        break;
+      case 'yesterday':
+        currentFiltered = filterByRange(yesterday, today);
+        prevFiltered = filterByRange(new Date(yesterday.getTime() - 86400000), yesterday);
+        break;
+      case '7days':
+        currentFiltered = filterByRange(weekAgo);
+        prevFiltered = filterByRange(twoWeeksAgo, weekAgo);
+        break;
+      case 'month':
+        currentFiltered = filterByRange(monthStart);
+        prevFiltered = filterByRange(lastMonthStart, monthStart);
+        break;
+      case 'lastMonth':
+        currentFiltered = filterByRange(lastMonthStart, new Date(lastMonthEnd.getTime() + 86400000));
+        prevFiltered = filterByRange(twoMonthsAgoStart, lastMonthStart);
+        break;
+      case 'quarter': currentFiltered = filterByRange(quarterStart); break;
+      case 'year': currentFiltered = filterByRange(yearStart); break;
+      case 'custom':
+        currentFiltered = paidOrders.filter(o => {
+          const d = new Date(o.createdAt);
           if (customMode === 'day') {
-            const target = new Date(customDate);
-            target.setHours(0,0,0,0);
-            const od = new Date(d);
-            od.setHours(0,0,0,0);
-            return od.getTime() === target.getTime();
+            const t = new Date(customDate); t.setHours(0, 0, 0, 0);
+            const od = new Date(d); od.setHours(0, 0, 0, 0);
+            return od.getTime() === t.getTime();
           } else if (customMode === 'month') {
             return d.getFullYear() === customDate.getFullYear() && d.getMonth() === customDate.getMonth();
-          } else {
-            return d.getFullYear() === customDate.getFullYear();
           }
-        }
-        case 'yesterday': return d >= yesterday && d < today;
-        case '7days': return d >= weekAgo;
-        case 'month': return d >= monthStart;
-        case 'lastMonth': return d >= lastMonthStart && d <= lastMonthEnd;
-        case 'quarter': return d >= quarterStart;
-        case 'year': return d >= yearStart;
-        default: return true;
-      }
-    });
+          return d.getFullYear() === customDate.getFullYear();
+        });
+        break;
+      default: currentFiltered = paidOrders;
+    }
 
-    return {
-      revenue: filtered.reduce((sum, o) => sum + o.totalAmount, 0),
-      orderCount: filtered.length,
-    };
+    const revenue = currentFiltered.reduce((sum, o) => sum + o.totalAmount, 0);
+    const prevRevenue = prevFiltered.reduce((sum, o) => sum + o.totalAmount, 0);
+    let trendPercent = 0;
+    if (prevRevenue > 0) trendPercent = Math.round(((revenue - prevRevenue) / prevRevenue) * 100);
+    else if (revenue > 0) trendPercent = 100;
+
+    return { revenue, orderCount: currentFiltered.length, trendPercent };
   };
 
-  const { revenue, orderCount } = getFilteredData();
+  const { revenue, orderCount, trendPercent } = getFilteredData();
 
   const formatMoney = (n: number) => {
     if (n === 0) return '0';
@@ -80,30 +126,20 @@ export function HomeScreen() {
   };
 
   const tabLabels: Record<TimeFilter, string> = {
-    today: 'Hôm nay',
-    yesterday: 'Hôm qua',
-    '7days': '7 ngày qua',
-    month: 'Tháng này',
-    lastMonth: 'Tháng trước',
-    quarter: 'Quý này',
-    year: 'Năm nay',
-    custom: 'Tuỳ chỉnh',
+    today: 'Hôm nay', yesterday: 'Hôm qua', '7days': '7 ngày',
+    month: 'Tháng này', lastMonth: 'Tháng trước',
+    quarter: 'Quý này', year: 'Năm nay', custom: 'Tuỳ chỉnh',
   };
-
   const mainTabs: TimeFilter[] = ['today', 'yesterday', 'month'];
 
-  const goToSell = () => navigation.navigate('Bán hàng');
+  const goToSell = () => navigation.navigate('Sell');
   const goToExpense = () => navigation.navigate('Chi phí');
-  const goToProducts = () => navigation.navigate('Bán hàng');
+  const goToProducts = () => navigation.navigate('Products');
 
   const getCustomLabel = () => {
-    if (customMode === 'day') {
-      return `${customDate.getDate()}/${customDate.getMonth() + 1}/${customDate.getFullYear()}`;
-    } else if (customMode === 'month') {
-      return `Tháng ${customDate.getMonth() + 1}/${customDate.getFullYear()}`;
-    } else {
-      return `Năm ${customDate.getFullYear()}`;
-    }
+    if (customMode === 'day') return `${customDate.getDate()}/${customDate.getMonth() + 1}/${customDate.getFullYear()}`;
+    if (customMode === 'month') return `T${customDate.getMonth() + 1}/${customDate.getFullYear()}`;
+    return `${customDate.getFullYear()}`;
   };
 
   const handleDateSelect = (date: Date, mode: 'day' | 'month' | 'year') => {
@@ -112,214 +148,207 @@ export function HomeScreen() {
     setActiveTab('custom');
   };
 
+  const renderAnimatedCard = (index: number, children: React.ReactNode) => (
+    <Animated.View style={{
+      opacity: cardAnims[index],
+      transform: [{ translateY: cardAnims[index].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+    }}>
+      {children}
+    </Animated.View>
+  );
+
   return (
     <AnimatedScreen>
       <View style={styles.container}>
-      <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
-      
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoWrap}>
-            <View style={styles.logoIcon}>
-              <Text style={styles.logoEmoji}>✏️</Text>
+        <LinearGradient
+          colors={Gradients.header}
+          style={styles.gradient}
+        />
+
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          {/* ─── Premium Header ─── */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.greetingSmall}>{greeting.emoji} {greeting.text}</Text>
+              <Text style={styles.greetingName}>{user?.name || 'Chủ quán'}</Text>
             </View>
-            <Text style={styles.logoStar}>✨</Text>
-            <Text style={styles.logoText}>Hi-Note</Text>
-          </View>
-          <TouchableOpacity style={styles.aiBtn} onPress={goToSell}>
-            <Text style={styles.aiBtnIcon}>🤖</Text>
-            <Text style={styles.aiBtnText}>Trợ lý AI</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Time Filter Tabs */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          style={styles.tabsScroll}
-          contentContainerStyle={styles.tabsRow}
-        >
-          {mainTabs.map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tabLabels[tab]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'custom' && styles.tabActive]}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={[styles.tabText, activeTab === 'custom' && styles.tabTextActive]}>
-              {activeTab === 'custom' ? getCustomLabel() : '📅 Chọn ngày'}
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Onboarding Card */}
-          {showOnboarding && (
-            <View style={styles.onboardingCard}>
-              <TouchableOpacity 
-                style={styles.onboardingClose}
-                onPress={() => setShowOnboarding(false)}
+            <TouchableOpacity style={styles.aiBtn} onPress={goToSell} activeOpacity={0.85}>
+              <LinearGradient
+                colors={Gradients.purple}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.aiBtnGradient}
               >
-                <Text style={styles.onboardingCloseIcon}>✕</Text>
-              </TouchableOpacity>
-              <Text style={styles.onboardingTitle}>Bắt đầu bán cùng Hi-Note</Text>
-              
-              <View style={styles.onboardingItem}>
-                <View style={styles.onboardingCheck}>
-                  <Text style={styles.onboardingCheckIcon}>✓</Text>
-                </View>
-                <Text style={styles.onboardingText}>Tạo đơn bằng AI</Text>
-                <TouchableOpacity onPress={goToSell}>
-                  <Text style={styles.onboardingAction}>Thử ngay</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.onboardingItem}>
-                <Text style={styles.onboardingIcon}>🔔</Text>
-                <Text style={styles.onboardingText}>Báo Ting ting tiền về</Text>
-                <TouchableOpacity>
-                  <Text style={styles.onboardingAction}>Thiết lập</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.onboardingItem}>
-                <Text style={styles.onboardingIcon}>📖</Text>
-                <Text style={styles.onboardingText}>Xem hướng dẫn</Text>
-                <TouchableOpacity>
-                  <Text style={styles.onboardingAction}>Xem</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* Stats Cards */}
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>
-                {activeTab === 'custom'
-                  ? `Doanh thu ${getCustomLabel()}`
-                  : `Doanh thu ${tabLabels[activeTab].toLowerCase()}`}
-              </Text>
-              <Text style={styles.statValue}>{formatMoney(revenue)}đ</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Số đơn</Text>
-              <Text style={styles.statValue}>{orderCount}</Text>
-            </View>
-          </View>
-
-          {/* Revenue Chart */}
-          <RevenueChart orders={orders} />
-
-          {/* Quick Stats Row */}
-          <View style={styles.quickStatsRow}>
-            <TouchableOpacity style={styles.quickStatCard} onPress={goToExpense}>
-              <View style={styles.quickStatHeader}>
-                <Text style={styles.quickStatLabel}>Chi hôm nay</Text>
-                <Text style={styles.quickStatArrow}>›</Text>
-              </View>
-              <Text style={styles.quickStatAction}>Thêm ngay</Text>
+                <Text style={styles.aiBtnIcon}>✨</Text>
+                <Text style={styles.aiBtnText}>Trợ lý AI</Text>
+              </LinearGradient>
             </TouchableOpacity>
-            
-            <View style={styles.quickStatCard}>
-              <View style={styles.quickStatHeader}>
-                <Text style={styles.quickStatLabel}>Chênh lệch</Text>
-                <Text style={styles.quickStatEye}>👁</Text>
-              </View>
-              <Text style={styles.quickStatValueGreen}>{formatMoney(revenue)}đ</Text>
-            </View>
           </View>
 
-          {/* 3-day Summary */}
-          <View style={styles.threeDayCard}>
-            <Text style={styles.threeDayTitle}>Thống kê 3 ngày gần nhất</Text>
-            <View style={styles.threeDayList}>
-              {(() => {
-                const now = new Date();
-                const days = [0,1,2].map(offset => {
-                  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
-                  const key = d.toDateString();
-                  const dayRevenue = orders
-                    .filter(o => {
-                      if (o.paymentStatus !== 'paid') return false;
-                      const od = new Date(o.createdAt);
-                      od.setHours(0,0,0,0);
-                      return od.toDateString() === key;
-                    })
-                    .reduce((s, o) => s + o.totalAmount, 0);
-                  const dayOrders = orders.filter(o => {
-                    const od = new Date(o.createdAt);
-                    od.setHours(0,0,0,0);
-                    return od.toDateString() === key;
-                  }).length;
-                  return { date: d, revenue: dayRevenue, orders: dayOrders };
-                });
-
-                return days.map((day) => (
-                  <View key={day.date.toDateString()} style={styles.threeDayRow}>
-                    <Text style={styles.threeDayDate}>
-                      {day.date.getDate().toString().padStart(2,'0')}/{(day.date.getMonth()+1).toString().padStart(2,'0')}
-                    </Text>
-                    <Text style={styles.threeDayValue}>{formatMoney(day.revenue)}đ</Text>
-                    <Text style={styles.threeDayCount}>{day.orders} đơn</Text>
-                  </View>
-                ));
-              })()}
-            </View>
-          </View>
-
-          {/* Best Sellers Section */}
-          <View style={styles.bestSellersCard}>
-            <Text style={styles.bestSellersTitle}>Hàng hóa bán chạy</Text>
-            
-            <View style={styles.emptyBestSellers}>
-              <View style={styles.shopIllustration}>
-                <Text style={styles.shopEmoji}>🏪</Text>
-                <View style={styles.phoneSmall}>
-                  <Text style={styles.phoneSmallEmoji}>📱</Text>
-                </View>
-              </View>
-              <Text style={styles.emptyText}>
-                Tự động tổng hợp doanh thu, không cần ghi sổ
-              </Text>
-              <TouchableOpacity style={styles.addProductBtn} onPress={goToProducts}>
-                <Text style={styles.addProductText}>Thêm hàng hóa</Text>
+          {/* ─── Time Filter Tabs ─── */}
+          <View style={styles.tabsContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabsRow}
+            >
+              {mainTabs.map(tab => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tab, activeTab === tab && styles.tabActive]}
+                  onPress={() => setActiveTab(tab)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                    {tabLabels[tab]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'custom' && styles.tabActive]}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabText, activeTab === 'custom' && styles.tabTextActive]}>
+                  {activeTab === 'custom' ? getCustomLabel() : '📅 Khác'}
+                </Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
 
-          <View style={{ height: 120 }} />
-        </ScrollView>
-      </SafeAreaView>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* ─── Revenue Card ─── */}
+            {renderAnimatedCard(0,
+              <GlassCard style={styles.revenueCard} intensity="strong">
+                <View style={styles.revenueHeader}>
+                  <View>
+                    <Text style={styles.revenueLabel}>Doanh thu</Text>
+                    <View style={styles.revenueRow}>
+                      <AnimatedNumber
+                        value={revenue}
+                        style={styles.revenueMoney}
+                        suffix="đ"
+                      />
+                    </View>
+                  </View>
+                  <View style={[styles.trendBadge, trendPercent < 0 && styles.trendDown]}>
+                    <Text style={[styles.trendText, trendPercent < 0 && styles.trendTextDown]}>
+                      {trendPercent >= 0 ? '↗' : '↘'} {trendPercent >= 0 ? '+' : ''}{trendPercent}%
+                    </Text>
+                  </View>
+                </View>
 
-      {/* Date Picker Modal */}
-      <DatePickerModal
-        visible={showDatePicker}
-        onClose={() => setShowDatePicker(false)}
-        onSelect={handleDateSelect}
-        initialDate={customDate}
-        minDate={user?.createdAt ? new Date(user.createdAt) : undefined}
-      />
+                {/* Stats Row */}
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <LinearGradient colors={['#EDE9FE', '#DDD6FE']} style={styles.statIcon}>
+                      <Text style={styles.statEmoji}>📦</Text>
+                    </LinearGradient>
+                    <View>
+                      <Text style={styles.statValue}>{orderCount}</Text>
+                      <Text style={styles.statLabel}>đơn hàng</Text>
+                    </View>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statItem}>
+                    <LinearGradient colors={['#D1FAE5', '#A7F3D0']} style={styles.statIcon}>
+                      <Text style={styles.statEmoji}>💰</Text>
+                    </LinearGradient>
+                    <View>
+                      <Text style={styles.statValue}>{orderCount > 0 ? formatMoney(Math.round(revenue / orderCount)) : '0'}đ</Text>
+                      <Text style={styles.statLabel}>TB/đơn</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Chart */}
+                <View style={styles.chartWrap}>
+                  <RevenueChart orders={orders} />
+                </View>
+              </GlassCard>
+            )}
+
+            {/* ─── Onboarding Card ─── */}
+            {showOnboarding && renderAnimatedCard(1,
+              <LinearGradient
+                colors={Gradients.warm}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.onboardingCard}
+              >
+                <TouchableOpacity style={styles.onboardingClose} onPress={() => setShowOnboarding(false)}>
+                  <View style={styles.closeCircle}><Text style={styles.closeIcon}>✕</Text></View>
+                </TouchableOpacity>
+
+                <Text style={styles.onboardingTitle}>🚀 Bắt đầu nhanh</Text>
+                <Text style={styles.onboardingSub}>3 bước để bán hàng cùng Hi-Note</Text>
+
+                <View style={styles.stepsContainer}>
+                  {[
+                    { icon: '✨', text: 'Tạo đơn bằng AI', action: goToSell, link: 'Thử ngay' },
+                    { icon: '🔊', text: 'Bật thông báo tiền về', action: () => navigation.navigate('Notifications'), link: 'Thiết lập' },
+                    { icon: '📦', text: 'Thêm sản phẩm', action: goToProducts, link: 'Thêm' },
+                  ].map((step, i) => (
+                    <TouchableOpacity key={i} style={styles.stepItem} onPress={step.action} activeOpacity={0.7}>
+                      <View style={styles.stepLeft}>
+                        <View style={styles.stepIconWrap}>
+                          <Text style={styles.stepIcon}>{step.icon}</Text>
+                        </View>
+                        <Text style={styles.stepText}>{step.text}</Text>
+                      </View>
+                      <Text style={styles.stepLink}>{step.link} →</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </LinearGradient>
+            )}
+
+            {/* ─── Quick Actions ─── */}
+            {renderAnimatedCard(2,
+              <View style={styles.quickGrid}>
+                {[
+                  { icon: '✎', label: 'Bán hàng', gradient: Gradients.primary, onPress: goToSell },
+                  { icon: '💸', label: 'Chi phí', gradient: ['#F59E0B', '#D97706'] as [string, string], onPress: goToExpense },
+                  { icon: '📦', label: 'Hàng hóa', gradient: ['#3B82F6', '#2563EB'] as [string, string], onPress: goToProducts },
+                  { icon: '📊', label: 'Báo cáo', gradient: Gradients.purple, onPress: () => navigation.navigate('Reports') },
+                ].map((item, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.quickCard}
+                    onPress={item.onPress}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient colors={item.gradient} style={styles.quickIconWrap}>
+                      <Text style={styles.quickIcon}>{item.icon}</Text>
+                    </LinearGradient>
+                    <Text style={styles.quickLabel}>{item.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <View style={{ height: 120 }} />
+          </ScrollView>
+        </SafeAreaView>
+
+        <DatePickerModal
+          visible={showDatePicker}
+          onClose={() => setShowDatePicker(false)}
+          onSelect={handleDateSelect}
+          initialDate={customDate}
+          minDate={user?.createdAt ? new Date(user.createdAt) : undefined}
+        />
       </View>
     </AnimatedScreen>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   gradient: { position: 'absolute', left: 0, right: 0, top: 0, height: 400 },
   safeArea: { flex: 1 },
 
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -327,166 +356,135 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  logoWrap: { flexDirection: 'row', alignItems: 'center' },
-  logoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoEmoji: { fontSize: 16 },
-  logoStar: { fontSize: 14, marginLeft: -4, marginTop: -12 },
-  logoText: { fontSize: 22, fontWeight: '800', color: Colors.text, marginLeft: 4 },
+  greetingSmall: { fontSize: 14, color: '#64748B', fontWeight: '500', marginBottom: 2 },
+  greetingName: { fontSize: 24, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+
   aiBtn: {
+    borderRadius: 22,
+    ...Shadows.purple,
+  },
+  aiBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
+    borderRadius: 22,
+    gap: 6,
   },
-  aiBtnIcon: { fontSize: 16, marginRight: 6 },
-  aiBtnText: { fontSize: 13, fontWeight: '600', color: Colors.purple },
+  aiBtnIcon: { fontSize: 14, color: '#fff' },
+  aiBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 
-  tabsScroll: { flexGrow: 0 },
-  tabsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8, alignItems: 'center' },
+  // Tabs
+  tabsContainer: { marginBottom: 4 },
+  tabsRow: { paddingHorizontal: 20, paddingVertical: 8, gap: 8 },
   tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
     borderRadius: 20,
-    backgroundColor: Colors.white,
+    backgroundColor: 'rgba(255,255,255,0.6)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
-  tabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tabText: { fontSize: 13, fontWeight: '500', color: Colors.textSecondary },
-  tabTextActive: { color: Colors.white, fontWeight: '600' },
+  tabActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    ...Shadows.primary,
+  },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  tabTextActive: { color: '#FFF', fontWeight: '700' },
 
   content: { flex: 1, paddingHorizontal: 16 },
 
-  onboardingCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
+  // Revenue Card
+  revenueCard: { marginBottom: 16, marginTop: 4 },
+  revenueHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
   },
-  onboardingClose: { position: 'absolute', top: 12, right: 12, padding: 4 },
-  onboardingCloseIcon: { fontSize: 16, color: Colors.textMuted },
-  onboardingTitle: { fontSize: 16, fontWeight: '700', color: Colors.text, marginBottom: 16 },
-  onboardingItem: {
+  revenueLabel: { fontSize: 13, color: '#64748B', fontWeight: '600', marginBottom: 6 },
+  revenueRow: { flexDirection: 'row', alignItems: 'baseline' },
+  revenueMoney: { fontSize: 32, fontWeight: '900', color: '#0F172A', letterSpacing: -1 },
+
+  trendBadge: {
+    flexDirection: 'row',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  trendDown: { backgroundColor: '#FEE2E2' },
+  trendText: { fontSize: 12, fontWeight: '800', color: '#16A34A' },
+  trendTextDown: { color: '#EF4444' },
+
+  statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  onboardingCheck: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  onboardingCheckIcon: { color: Colors.white, fontSize: 12, fontWeight: '700' },
-  onboardingIcon: { fontSize: 20, marginRight: 12 },
-  onboardingText: { flex: 1, fontSize: 14, color: Colors.text },
-  onboardingAction: { fontSize: 14, fontWeight: '600', color: Colors.primary },
-
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#F8FAFC',
     borderRadius: 16,
-    padding: 16,
-    ...Shadows.card,
-  },
-  statLabel: { fontSize: 13, color: Colors.textSecondary, marginBottom: 8 },
-  statValue: { fontSize: 26, fontWeight: '700', color: Colors.primary },
-
-  illustrationSection: { alignItems: 'center', paddingVertical: 24 },
-  illustrationWrap: { position: 'relative', marginBottom: 16 },
-  phoneIllustration: {
-    width: 80,
-    height: 100,
-    backgroundColor: '#E0E7FF',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  phoneEmoji: { fontSize: 32 },
-  handEmoji: { position: 'absolute', bottom: -10, right: -20 },
-  handIcon: { fontSize: 28 },
-  coinBadge: { position: 'absolute', top: -10, right: -10 },
-  coinEmoji: { fontSize: 24 },
-  illustrationText: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
-
-  quickStatsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  quickStatCard: {
-    flex: 1,
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  quickStatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  quickStatLabel: { fontSize: 13, color: Colors.textSecondary },
-  quickStatArrow: { fontSize: 16, color: Colors.textMuted },
-  quickStatEye: { fontSize: 14 },
-  quickStatAction: { fontSize: 15, fontWeight: '600', color: Colors.primary },
-  quickStatValueGreen: { fontSize: 22, fontWeight: '700', color: Colors.green },
-
-  threeDayCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    padding: 14,
     marginBottom: 16,
   },
-  threeDayTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12, color: Colors.text },
-  threeDayList: {},
-  threeDayRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    paddingVertical: 10, 
-    borderTopWidth: 1, 
-    borderTopColor: Colors.borderLight 
-  },
-  threeDayDate: { fontSize: 13, color: Colors.textSecondary, flex: 1 },
-  threeDayValue: { fontSize: 13, fontWeight: '700', color: Colors.text, flex: 1, textAlign: 'center' },
-  threeDayCount: { fontSize: 13, color: Colors.textSecondary, flex: 1, textAlign: 'right' },
+  statItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  statIcon: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  statEmoji: { fontSize: 18 },
+  statValue: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  statLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
+  statDivider: { width: 1, height: 32, backgroundColor: '#E2E8F0', marginHorizontal: 8 },
 
-  bestSellersCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
+  chartWrap: { marginTop: 4 },
+
+  // Onboarding
+  onboardingCard: {
+    borderRadius: 24,
     padding: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.6)',
+    ...Shadows.md,
   },
-  bestSellersTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 20 },
-  emptyBestSellers: { alignItems: 'center', paddingVertical: 20 },
-  shopIllustration: { position: 'relative', marginBottom: 16 },
-  shopEmoji: { fontSize: 64 },
-  phoneSmall: { position: 'absolute', bottom: -5, right: -15 },
-  phoneSmallEmoji: { fontSize: 32 },
-  emptyText: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginBottom: 20 },
-  addProductBtn: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+  onboardingClose: { position: 'absolute', top: 14, right: 14, zIndex: 10 },
+  closeCircle: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center' },
+  closeIcon: { fontSize: 12, color: '#94A3B8', fontWeight: 'bold' },
+  onboardingTitle: { fontSize: 18, fontWeight: '800', color: '#831843', marginBottom: 4 },
+  onboardingSub: { fontSize: 13, color: '#BE185D', fontWeight: '500', marginBottom: 16 },
+  stepsContainer: { gap: 8 },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    padding: 12,
+    borderRadius: 16,
+  },
+  stepLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepIconWrap: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.8)', justifyContent: 'center', alignItems: 'center' },
+  stepIcon: { fontSize: 16 },
+  stepText: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  stepLink: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
+
+  // Quick Actions
+  quickGrid: { flexDirection: 'row', gap: 10 },
+  quickCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    padding: 16,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    alignItems: 'center',
+    gap: 10,
+    ...Shadows.sm,
   },
-  addProductText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
+  quickIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickIcon: { fontSize: 20, color: '#FFF' },
+  quickLabel: { fontSize: 12, fontWeight: '700', color: '#334155' },
 });

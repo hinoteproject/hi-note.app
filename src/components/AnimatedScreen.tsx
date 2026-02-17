@@ -5,25 +5,41 @@ interface Props {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   delay?: number;
+  type?: 'fadeSlide' | 'fadeScale' | 'fade';
 }
 
-export default function AnimatedScreen({ children, style, delay = 0 }: Props) {
+export default function AnimatedScreen({ children, style, delay = 0, type = 'fadeSlide' }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(8)).current;
+  const translateY = useRef(new Animated.Value(type === 'fadeSlide' ? 16 : 0)).current;
+  const scale = useRef(new Animated.Value(type === 'fadeScale' ? 0.96 : 1)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 320, delay, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 320, delay, useNativeDriver: true }),
-    ]).start();
-  }, [opacity, translateY, delay]);
+    const animations = [
+      Animated.timing(opacity, { toValue: 1, duration: 400, delay, useNativeDriver: true }),
+    ];
+
+    if (type === 'fadeSlide') {
+      animations.push(
+        Animated.timing(translateY, { toValue: 0, duration: 400, delay, useNativeDriver: true })
+      );
+    }
+    if (type === 'fadeScale') {
+      animations.push(
+        Animated.spring(scale, { toValue: 1, delay, useNativeDriver: true, damping: 20, stiffness: 200 })
+      );
+    }
+
+    Animated.parallel(animations).start();
+  }, []);
 
   return (
-    <Animated.View style={[{ flex: 1, opacity, transform: [{ translateY }] }, style]}>
+    <Animated.View
+      style={[
+        { flex: 1, opacity, transform: [{ translateY }, { scale }] },
+        style,
+      ]}
+    >
       {children}
     </Animated.View>
   );
 }
-
-
-

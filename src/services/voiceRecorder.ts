@@ -22,7 +22,7 @@ export async function startRecording(): Promise<void> {
     const { recording: newRecording } = await Audio.Recording.createAsync(
       Audio.RecordingOptionsPresets.HIGH_QUALITY
     );
-    
+
     recording = newRecording;
     console.log('🎤 Recording started');
   } catch (error) {
@@ -48,7 +48,7 @@ export async function stopRecording(): Promise<string> {
     }
 
     console.log('🎤 Recording stopped, URI:', uri);
-    
+
     try {
       const text = await transcribeAudio(uri);
       return text;
@@ -92,16 +92,25 @@ async function transcribeAudio(audioUri: string): Promise<string> {
   const tryLocalUpload = async () => {
     const formData = new FormData();
     try {
+
       // If the URI looks like a local file (file:// or absolute path), attach as RN file object
-      if (audioUri.startsWith('file://') || audioUri.startsWith('/')) {
-        formData.append('file', { uri: audioUri, type: 'audio/m4a', name: 'audio.m4a' } as any);
+      // On some Android versions, file:// is required.
+      let uriToUpload = audioUri;
+      if (!uriToUpload.startsWith('file://') && !uriToUpload.startsWith('http')) {
+        uriToUpload = `file://${uriToUpload}`;
+      }
+
+      if (uriToUpload.startsWith('file://') || uriToUpload.startsWith('/')) {
+        formData.append('model', 'whisper-large-v3');
+        formData.append('file', { uri: uriToUpload, type: 'audio/m4a', name: 'audio.m4a' } as any);
       } else {
         // remote url - fetch blob instead
         const fileResp = await fetch(audioUri);
         const blob = await fileResp.blob();
+        formData.append('model', 'whisper-large-v3');
         formData.append('file', blob as any, 'audio.m4a');
       }
-      formData.append('model', 'whisper-large-v3');
+
       formData.append('language', 'vi');
       formData.append('response_format', 'text');
 
@@ -110,6 +119,7 @@ async function transcribeAudio(audioUri: string): Promise<string> {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${GROQ_KEY}`,
+            // DO NOT set Content-Type for FormData - RN sets it automatically with boundary
           },
           body: formData,
         });

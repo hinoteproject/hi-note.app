@@ -1,29 +1,30 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Alert,
-  Animated,
-  KeyboardAvoidingView,
-  Platform,
   Modal,
   ActivityIndicator,
+  FlatList,
+  Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  addExpenseToFirebase, 
+import {
+  addExpenseToFirebase,
   getExpensesFromFirebase,
   subscribeToExpenses,
-  Expense 
+  Expense
 } from '../services/firebaseStore';
 import { isFirebaseConfigured } from '../config/keys';
-import { Colors, Shadows } from '../constants/theme';
+import { Colors, Gradients, Shadows } from '../constants/theme';
 import AnimatedScreen from '../components/AnimatedScreen';
+import GlassCard from '../components/GlassCard';
+import AnimatedNumber from '../components/AnimatedNumber';
 import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording } from '../services/voiceRecorder';
 
 export function ExpenseScreen() {
@@ -35,85 +36,55 @@ export function ExpenseScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  const floatAnim = useRef(new Animated.Value(0)).current;
+
+  // FAB animation
+  const fabScale = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const recordingAnim = useRef(new Animated.Value(1)).current;
 
-  const categories = [
-    { key: 'import', label: 'Nhập hàng', icon: '📦' },
-    { key: 'salary', label: 'Lương', icon: '💼' },
-    { key: 'rent', label: 'Mặt bằng', icon: '🏠' },
-    { key: 'electric', label: 'Điện', icon: '⚡' },
-    { key: 'water', label: 'Nước', icon: '💧' },
-    { key: 'internet', label: 'Internet', icon: '📶' },
-    { key: 'other', label: 'Khác', icon: '📝' },
-  ];
-
-  // Load expenses từ Firebase
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    
-    const loadExpenses = async () => {
-      if (isFirebaseConfigured) {
-        try {
-          const data = await getExpensesFromFirebase();
-          setExpenses(data);
-          // Subscribe to realtime updates
-          unsubscribe = subscribeToExpenses((newExpenses) => {
-            setExpenses(newExpenses);
-          });
-        } catch (error) {
-          console.error('Error loading expenses:', error);
-        }
-      }
-      setIsLoading(false);
-    };
-    loadExpenses();
-    
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -10, duration: 2000, useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1500, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  // Recording animation
   useEffect(() => {
     if (isRecording) {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(recordingAnim, { toValue: 1.3, duration: 500, useNativeDriver: true }),
-          Animated.timing(recordingAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
         ])
       ).start();
     } else {
-      recordingAnim.setValue(1);
+      pulseAnim.setValue(1);
     }
   }, [isRecording]);
 
-  // Cleanup recording on unmount
+  const categories = [
+    { key: 'import', label: 'Nhập hàng', icon: '📦', gradient: ['#FEF3C7', '#FDE68A'] },
+    { key: 'salary', label: 'Lương', icon: '💼', gradient: ['#EDE9FE', '#DDD6FE'] },
+    { key: 'rent', label: 'Mặt bằng', icon: '🏠', gradient: ['#FCE7F3', '#FBCFE8'] },
+    { key: 'electric', label: 'Điện', icon: '⚡', gradient: ['#FEF9C3', '#FEF08A'] },
+    { key: 'water', label: 'Nước', icon: '💧', gradient: ['#E0F2FE', '#BAE6FD'] },
+    { key: 'internet', label: 'Internet', icon: '📶', gradient: ['#D1FAE5', '#A7F3D0'] },
+    { key: 'other', label: 'Khác', icon: '📝', gradient: ['#F1F5F9', '#E2E8F0'] },
+  ];
+
   useEffect(() => {
-    return () => {
-      if (checkIsRecording()) {
-        cancelRecording();
+    let unsubscribe: (() => void) | undefined;
+    const loadExpenses = async () => {
+      const mockData: Expense[] = [
+        { id: '1', name: 'Nhập rau củ', amount: 500000, category: 'import', createdAt: new Date() },
+        { id: '2', name: 'Tiền điện tháng 5', amount: 1200000, category: 'electric', createdAt: new Date(Date.now() - 86400000) },
+      ];
+      setExpenses(mockData);
+      if (isFirebaseConfigured) {
+        try {
+          const data = await getExpensesFromFirebase();
+          if (data.length > 0) setExpenses(data);
+          unsubscribe = subscribeToExpenses((newExpenses) => { setExpenses(newExpenses); });
+        } catch (error) { console.error('Error loading expenses:', error); }
       }
+      setIsLoading(false);
+    };
+    loadExpenses();
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (checkIsRecording()) cancelRecording();
     };
   }, []);
 
@@ -132,22 +103,15 @@ export function ExpenseScreen() {
       }
       setIsProcessing(false);
     } else {
-      try {
-        await startRecording();
-        setIsRecording(true);
-      } catch (error: any) {
-        Alert.alert('Lỗi', error.message || 'Không thể bắt đầu ghi âm');
-      }
+      try { await startRecording(); setIsRecording(true); }
+      catch (error: any) { Alert.alert('Lỗi', error.message || 'Không thể bắt đầu ghi âm'); }
     }
   };
 
   const formatMoney = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
 
   const handleAddExpense = async () => {
-    if (!inputText.trim()) {
-      Alert.alert('Thông báo', 'Vui lòng nhập chi phí');
-      return;
-    }
+    if (!inputText.trim()) { Alert.alert('Thông báo', 'Vui lòng nhập chi phí'); return; }
     const regex = /(\d+)\s*(?:k|nghìn|ngàn|tr|triệu)?/i;
     const match = inputText.match(regex);
     if (match) {
@@ -155,353 +119,259 @@ export function ExpenseScreen() {
       if (/tr|triệu/i.test(inputText)) amount *= 1000000;
       else if (/k|nghìn|ngàn/i.test(inputText)) amount *= 1000;
       else if (amount < 1000) amount *= 1000;
-
-      const name = inputText.replace(regex, '').trim() || 
+      const name = inputText.replace(regex, '').trim() ||
         categories.find(c => c.key === selectedCategory)?.label || 'Chi phí khác';
-
       setIsSaving(true);
       try {
         if (isFirebaseConfigured) {
-          const id = await addExpenseToFirebase({
-            name,
-            amount,
-            category: selectedCategory || 'other',
-            createdAt: new Date(),
-          });
-          setExpenses([{ id, name, amount, category: selectedCategory || 'other', createdAt: new Date() }, ...expenses]);
+          await addExpenseToFirebase({ name, amount, category: selectedCategory || 'other', createdAt: new Date() });
         } else {
-          const newExpense: Expense = {
-            id: Date.now().toString(),
-            name,
-            amount,
-            category: selectedCategory || 'other',
-            createdAt: new Date(),
-          };
+          const newExpense: Expense = { id: Date.now().toString(), name, amount, category: selectedCategory || 'other', createdAt: new Date() };
           setExpenses([newExpense, ...expenses]);
         }
-        setShowAddModal(false);
-        setInputText('');
-        setSelectedCategory('');
-      } catch (error) {
-        console.error('Error adding expense:', error);
-        Alert.alert('Lỗi', 'Không thể lưu chi phí. Vui lòng thử lại.');
-      }
+        setShowAddModal(false); setInputText(''); setSelectedCategory('');
+      } catch (error) { Alert.alert('Lỗi', 'Không thể lưu chi phí. Vui lòng thử lại.'); }
       setIsSaving(false);
-    } else {
-      Alert.alert('Lỗi', 'Vui lòng nhập số tiền\nVD: "Mua cam 500k"');
-    }
+    } else { Alert.alert('Lỗi', 'Vui lòng nhập số tiền\nVD: "Mua cam 500k"'); }
   };
 
   const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
 
+  const renderExpenseItem = ({ item, index }: { item: Expense; index: number }) => {
+    const cat = categories.find(c => c.key === item.category) || categories[categories.length - 1];
+    return (
+      <View style={styles.expenseItem}>
+        <LinearGradient colors={cat.gradient as [string, string]} style={styles.expenseIconWrap}>
+          <Text style={{ fontSize: 20 }}>{cat.icon}</Text>
+        </LinearGradient>
+        <View style={styles.expenseInfo}>
+          <Text style={styles.expenseName}>{item.name}</Text>
+          <Text style={styles.expenseCategory}>{cat.label} • {new Date(item.createdAt).toLocaleDateString('vi-VN')}</Text>
+        </View>
+        <Text style={styles.expenseAmount}>-{formatMoney(item.amount)}đ</Text>
+      </View>
+    );
+  };
+
+  const handleFabPress = () => {
+    Animated.sequence([
+      Animated.spring(fabScale, { toValue: 0.85, useNativeDriver: true, speed: 50 }),
+      Animated.spring(fabScale, { toValue: 1, useNativeDriver: true, damping: 8, stiffness: 300 }),
+    ]).start();
+    setShowAddModal(true);
+  };
+
   return (
     <AnimatedScreen>
-    <View style={styles.container}>
-      <LinearGradient colors={['#E8F4FE', '#EEF2FF', '#F8FAFC']} style={StyleSheet.absoluteFill} />
-      
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Chi phí</Text>
-          <Text style={styles.subTitle}>Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()}</Text>
-        </View>
+      <View style={styles.container}>
+        <LinearGradient colors={Gradients.header} style={styles.gradient} />
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {expenses.length === 0 ? (
-            <View style={styles.emptyState}>
-              {/* Robot */}
-              <Animated.View style={[styles.robotWrap, { transform: [{ translateY: floatAnim }] }]}>
-                <View style={styles.aiBadge}>
-                  <Text style={styles.aiBadgeText}>AI</Text>
-                </View>
-                
-                <Text style={styles.spark1}>✦</Text>
-                <Text style={styles.spark2}>◇</Text>
-                <Text style={styles.spark3}>✦</Text>
-                
-                <View style={styles.robot}>
-                  <View style={styles.earL} />
-                  <View style={styles.earR} />
-                  <View style={styles.head}>
-                    <View style={styles.eyes}>
-                      <View style={styles.eye} />
-                      <View style={styles.eye} />
-                    </View>
-                    <View style={styles.mouth} />
-                  </View>
-                </View>
-                <View style={styles.shadow} />
-              </Animated.View>
-
-              {/* Features */}
-              <View style={styles.features}>
-                <View style={styles.featureRow}>
-                  <View style={[styles.featureIcon, { backgroundColor: '#DCFCE7' }]}>
-                    <Text style={styles.featureEmoji}>✨</Text>
-                  </View>
-                  <View style={styles.featureTextWrap}>
-                    <Text style={styles.featureBold}>5 giây thêm chi phí:</Text>
-                    <Text style={styles.featureNormal}> Đọc, gõ là xong</Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureRow}>
-                  <View style={[styles.featureIcon, { backgroundColor: '#FEF3C7' }]}>
-                    <Text style={styles.featureEmoji}>📊</Text>
-                  </View>
-                  <View style={styles.featureTextWrap}>
-                    <Text style={styles.featureBold}>Xem nhanh top chi:</Text>
-                    <Text style={styles.featureNormal}> AI tự tổng hợp cho bạn</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          ) : (
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          {/* Header */}
+          <View style={styles.header}>
             <View>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>💸 Tổng chi tháng này</Text>
-                <Text style={styles.summaryValue}>{formatMoney(totalExpense)}đ</Text>
-              </View>
-              {expenses.map((expense) => (
-                <View key={expense.id} style={styles.expenseItem}>
-                  <View style={styles.expenseIcon}>
-                    <View style={styles.expenseDot} />
-                  </View>
-                  <View style={styles.expenseInfo}>
-                    <Text style={styles.expenseName}>{expense.name}</Text>
-                    <Text style={styles.expenseTime}>
-                      {new Date(expense.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </View>
-                  <Text style={styles.expenseAmount}>-{formatMoney(expense.amount)}đ</Text>
-                </View>
-              ))}
+              <Text style={styles.title}>Chi phí</Text>
+              <Text style={styles.subtitle}>Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()}</Text>
             </View>
-          )}
-          <View style={{ height: 200 }} />
-        </ScrollView>
-
-        {/* FAB */}
-        <Animated.View style={[styles.fabWrap, { transform: [{ scale: pulseAnim }] }]}>
-          <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)} activeOpacity={0.9}>
-            <LinearGradient colors={['#818CF8', '#6366F1']} style={styles.fabCircle}>
-              <Text style={styles.fabPlus}>+</Text>
-            </LinearGradient>
-            <Text style={styles.fabLabel}>Thêm chi phí</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </SafeAreaView>
-
-      {/* Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent>
-        <View style={styles.modalBg}>
-          <View style={styles.modalBox}>
-            <LinearGradient colors={['#EEF2FF', '#F8FAFC', '#FFF']} style={styles.modalGradient}>
-              <SafeAreaView style={{ flex: 1 }}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Thêm chi phí</Text>
-                  <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                    <Text style={styles.modalClose}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                  <View style={styles.modalBody}>
-                    <View style={styles.hintBox}>
-                      <Text style={styles.hintIcon}>💡</Text>
-                      <Text style={styles.hintText}>
-                        Nhập tên + số tiền, ví dụ: <Text style={styles.hintBold}>Mua cam 500k</Text>
-                      </Text>
-                    </View>
-
-                    <Text style={styles.catLabel}>Danh mục</Text>
-                    <View style={styles.catsWrap}>
-                      {categories.map((c) => (
-                        <TouchableOpacity
-                          key={c.key}
-                          style={[styles.catChip, selectedCategory === c.key && styles.catChipActive]}
-                          onPress={() => setSelectedCategory(selectedCategory === c.key ? '' : c.key)}
-                        >
-                          <Text style={styles.catIcon}>{c.icon}</Text>
-                          <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-
-                  <View style={styles.inputBar}>
-                    <TextInput
-                      style={styles.inputField}
-                      placeholder="Nhập tên khoản chi + số tiền..."
-                      placeholderTextColor="#94A3B8"
-                      value={inputText}
-                      onChangeText={setInputText}
-                      onSubmitEditing={handleAddExpense}
-                      editable={!isProcessing && !isRecording}
-                      autoFocus
-                    />
-                    <TouchableOpacity style={styles.micBtn} onPress={handleMicPress} disabled={isProcessing}>
-                      <Animated.View style={{ transform: [{ scale: isRecording ? recordingAnim : 1 }] }}>
-                        <LinearGradient 
-                          colors={isRecording ? ['#EF4444', '#DC2626'] : ['#A78BFA', '#8B5CF6']} 
-                          style={styles.micBtnGradient}
-                        >
-                          {isProcessing ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
-                          )}
-                        </LinearGradient>
-                      </Animated.View>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.sendBtn} onPress={handleAddExpense} disabled={isProcessing}>
-                      <LinearGradient colors={['#818CF8', '#6366F1']} style={styles.sendBtnGradient}>
-                        <Text style={styles.sendBtnText}>Thêm</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
-
-                  {isRecording && (
-                    <View style={styles.recordingIndicator}>
-                      <View style={styles.recordingDot} />
-                      <Text style={styles.recordingText}>Đang nghe... Nhấn để dừng</Text>
-                    </View>
-                  )}
-                </KeyboardAvoidingView>
-              </SafeAreaView>
-            </LinearGradient>
           </View>
-        </View>
-      </Modal>
-    </View>
+
+          {/* Summary Card */}
+          <View style={styles.summaryContainer}>
+            <GlassCard style={styles.summaryCard} intensity="strong">
+              <View style={styles.summaryRow}>
+                <View>
+                  <Text style={styles.summaryLabel}>💸 Tổng chi tiêu</Text>
+                  <AnimatedNumber
+                    value={totalExpense}
+                    style={styles.summaryValue}
+                    suffix="đ"
+                  />
+                </View>
+                <View style={styles.summaryMeta}>
+                  <View style={styles.summaryPill}>
+                    <Text style={styles.summaryPillText}>{expenses.length} khoản</Text>
+                  </View>
+                </View>
+              </View>
+            </GlassCard>
+          </View>
+
+          {/* List */}
+          <FlatList
+            data={expenses}
+            keyExtractor={item => item.id}
+            renderItem={renderExpenseItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={<Text style={styles.sectionTitle}>Danh sách chi tiêu</Text>}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconWrap}>
+                  <Text style={{ fontSize: 32 }}>💸</Text>
+                </View>
+                <Text style={styles.emptyTitle}>Chưa có chi phí nào</Text>
+                <Text style={styles.emptyText}>Nhấn + để thêm chi phí đầu tiên</Text>
+              </View>
+            }
+          />
+
+          {/* Premium FAB */}
+          <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
+            <TouchableOpacity activeOpacity={0.9} onPress={handleFabPress}>
+              <LinearGradient colors={Gradients.primary} style={styles.fabGradient}>
+                <Text style={styles.fabIcon}>+</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+        </SafeAreaView>
+
+        {/* Add Modal */}
+        <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Thêm chi phí</Text>
+
+              <Text style={styles.inputLabel}>Nội dung chi</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.mainInput}
+                  placeholder="VD: Tiền điện 1tr5..."
+                  placeholderTextColor="#94A3B8"
+                  value={inputText}
+                  onChangeText={setInputText}
+                  autoFocus
+                />
+                <TouchableOpacity style={styles.micBtn} onPress={handleMicPress}>
+                  {isProcessing ? (
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                  ) : (
+                    <Animated.Text style={[styles.micIcon, isRecording && { color: Colors.error, transform: [{ scale: pulseAnim }] }]}>
+                      {isRecording ? '⏹' : '🎤'}
+                    </Animated.Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.inputLabel}>Danh mục</Text>
+              <View style={styles.catsGrid}>
+                {categories.map(c => (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[styles.catItem, selectedCategory === c.key && styles.catItemActive]}
+                    onPress={() => setSelectedCategory(c.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.catIcon}>{c.icon}</Text>
+                    <Text style={[styles.catText, selectedCategory === c.key && styles.catTextActive]}>{c.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddExpense} disabled={isSaving} activeOpacity={0.85}>
+                <LinearGradient colors={Gradients.primary} style={styles.saveBtnGradient}>
+                  {isSaving ? <ActivityIndicator color="white" /> : <Text style={styles.saveBtnText}>Lưu chi phí</Text>}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </View>
     </AnimatedScreen>
   );
 }
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  gradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 350 },
   safeArea: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingVertical: 16 },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.text },
-  subTitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
-  content: { flex: 1, paddingHorizontal: 20 },
 
-  emptyState: { alignItems: 'center', paddingTop: 30 },
-
-  robotWrap: { width: 200, height: 180, alignItems: 'center', justifyContent: 'center', marginBottom: 30, position: 'relative' },
-  aiBadge: { position: 'absolute', top: 10, left: 30, backgroundColor: '#DBEAFE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, zIndex: 5 },
-  aiBadgeText: { fontSize: 13, fontWeight: '700', color: '#3B82F6' },
-  spark1: { position: 'absolute', top: 20, right: 40, fontSize: 16, color: '#818CF8' },
-  spark2: { position: 'absolute', top: 70, left: 20, fontSize: 12, color: '#A5B4FC' },
-  spark3: { position: 'absolute', bottom: 50, right: 30, fontSize: 12, color: '#A5B4FC' },
-  robot: { position: 'relative' },
-  earL: { position: 'absolute', left: -15, top: 20, width: 18, height: 30, backgroundColor: '#94A3B8', borderRadius: 9 },
-  earR: { position: 'absolute', right: -15, top: 20, width: 18, height: 30, backgroundColor: '#94A3B8', borderRadius: 9 },
-  head: { width: 110, height: 80, backgroundColor: '#E2E8F0', borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
-  eyes: { flexDirection: 'row', gap: 20, marginBottom: 10 },
-  eye: { width: 10, height: 10, backgroundColor: '#1E293B', borderRadius: 5 },
-  mouth: { width: 35, height: 6, backgroundColor: '#1E293B', borderRadius: 3 },
-  shadow: { width: 90, height: 15, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 45, marginTop: 10 },
-
-  features: { width: '100%', paddingHorizontal: 10 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  featureIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  featureEmoji: { fontSize: 20 },
-  featureTextWrap: { flex: 1, flexDirection: 'row', flexWrap: 'wrap' },
-  featureBold: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  featureNormal: { fontSize: 15, color: Colors.textSecondary },
-
-  summaryCard: { backgroundColor: Colors.red, borderRadius: 16, padding: 20, marginBottom: 16, ...Shadows.card },
-  summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.9)', marginBottom: 6 },
-  summaryValue: { fontSize: 30, fontWeight: '800', color: '#FFF' },
-  
-  expenseItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.white, 
-    borderRadius: 16, 
-    padding: 16, 
-    marginBottom: 10, 
-    ...Shadows.card,
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 12,
   },
-  expenseIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.redBg, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  expenseDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.red },
+  title: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 2 },
+
+  summaryContainer: { paddingHorizontal: 16, marginBottom: 8 },
+  summaryCard: { marginBottom: 0 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  summaryLabel: { fontSize: 13, color: '#64748B', fontWeight: '600', marginBottom: 6 },
+  summaryValue: { fontSize: 32, fontWeight: '900', color: '#EF4444', letterSpacing: -1 },
+  summaryMeta: { alignItems: 'flex-end' },
+  summaryPill: {
+    backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14,
+  },
+  summaryPillText: { fontSize: 12, fontWeight: '700', color: '#EF4444' },
+
+  listContent: { paddingHorizontal: 16, paddingBottom: 180 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#334155', marginBottom: 12, marginLeft: 4 },
+
+  emptyState: { alignItems: 'center', paddingTop: 60 },
+  emptyIconWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.8)', justifyContent: 'center', alignItems: 'center',
+    marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
+    ...Shadows.md,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginBottom: 6 },
+  emptyText: { color: '#94A3B8', fontSize: 14 },
+
+  expenseItem: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 18, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
+    ...Shadows.sm,
+  },
+  expenseIconWrap: {
+    width: 46, height: 46, borderRadius: 15,
+    justifyContent: 'center', alignItems: 'center', marginRight: 12,
+  },
   expenseInfo: { flex: 1 },
-  expenseName: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  expenseTime: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  expenseAmount: { fontSize: 16, fontWeight: '700', color: Colors.red },
+  expenseName: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 2 },
+  expenseCategory: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  expenseAmount: { fontSize: 15, fontWeight: '800', color: '#EF4444' },
 
-  fabWrap: { position: 'absolute', bottom: 110, right: 20 },
-  fab: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.white, 
-    borderRadius: 28, 
-    paddingRight: 18, 
-    paddingLeft: 4, 
-    paddingVertical: 4, 
-    ...Shadows.purple,
+  fab: {
+    position: 'absolute', bottom: 110, right: 20,
+    ...Shadows.primary,
   },
-  fabCircle: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
-  fabPlus: { fontSize: 28, color: '#FFF', fontWeight: '300', marginTop: -2 },
-  fabLabel: { fontSize: 15, fontWeight: '600', color: Colors.text, marginLeft: 10 },
+  fabGradient: { width: 58, height: 58, borderRadius: 29, justifyContent: 'center', alignItems: 'center' },
+  fabIcon: { fontSize: 30, color: '#FFF', marginTop: -2 },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalBox: { flex: 1, marginTop: 80 },
-  modalGradient: { flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
-  modalClose: { fontSize: 20, color: Colors.textMuted, padding: 4 },
-  modalBody: { flex: 1, paddingHorizontal: 20 },
-  
-  hintBox: { 
-    flexDirection: 'row',
-    alignItems: 'center', 
-    backgroundColor: Colors.primaryBg, 
-    padding: 16, 
-    borderRadius: 12, 
-    marginBottom: 24,
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
-  hintIcon: { fontSize: 20, marginRight: 12 },
-  hintText: { fontSize: 14, color: Colors.textSecondary, flex: 1 },
-  hintBold: { color: Colors.text, fontWeight: '600' },
-  
-  catLabel: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary, marginBottom: 12 },
-  catsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  catChip: { 
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14, 
-    paddingVertical: 10, 
-    borderRadius: 20, 
-    backgroundColor: Colors.white, 
-    borderWidth: 1, 
-    borderColor: Colors.border,
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0',
+    alignSelf: 'center', marginBottom: 16,
   },
-  catChipActive: { backgroundColor: Colors.primaryBg, borderColor: Colors.primary },
-  catIcon: { fontSize: 14, marginRight: 6 },
-  catText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
-  catTextActive: { color: Colors.primary, fontWeight: '600' },
-  
-  inputBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    paddingBottom: 30, 
-    backgroundColor: Colors.white, 
-    borderTopWidth: 1, 
-    borderTopColor: Colors.borderLight, 
-    gap: 10,
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 20, textAlign: 'center' },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: '#64748B', marginBottom: 8, marginLeft: 4 },
+  inputWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F8FAFC', borderRadius: 14, paddingHorizontal: 16,
+    marginBottom: 20, borderWidth: 1.5, borderColor: '#E2E8F0',
   },
-  inputField: { flex: 1, backgroundColor: Colors.inputBg, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 14, fontSize: 15, color: Colors.text },
-  micBtn: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
-  micBtnGradient: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  micIcon: { fontSize: 20 },
-  sendBtn: { borderRadius: 24, overflow: 'hidden' },
-  sendBtnGradient: { paddingHorizontal: 20, paddingVertical: 14 },
-  sendBtnText: { fontSize: 14, fontWeight: '600', color: Colors.white },
-  recordingIndicator: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, backgroundColor: '#FEF2F2' },
-  recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', marginRight: 8 },
-  recordingText: { fontSize: 13, color: '#DC2626', fontWeight: '500' },
+  mainInput: { flex: 1, paddingVertical: 14, fontSize: 16, color: '#1E293B' },
+  micBtn: { padding: 8 },
+  micIcon: { fontSize: 20, color: Colors.primary },
+
+  catsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  catItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0',
+  },
+  catItemActive: { backgroundColor: '#ECFDF5', borderColor: Colors.primary },
+  catIcon: { marginRight: 6, fontSize: 14 },
+  catText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  catTextActive: { color: Colors.primary, fontWeight: '700' },
+
+  saveBtn: { borderRadius: 16, overflow: 'hidden' },
+  saveBtnGradient: { paddingVertical: 16, alignItems: 'center', borderRadius: 16 },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 });

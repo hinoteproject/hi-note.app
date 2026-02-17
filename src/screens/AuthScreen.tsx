@@ -9,14 +9,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Animated,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedButton from '../components/AnimatedButton';
-import { Colors } from '../constants/theme';
+import GlassCard from '../components/GlassCard';
+import { Colors, Gradients, Shadows } from '../constants/theme';
 import { useStore } from '../store/useStore';
-import { isFirebaseConfigured } from '../config/keys';
-import { addUserToFirebase } from '../services/firebaseStore';
 import { sendEmailOTP, verifyEmailOTP, checkEmailExists, isValidEmail, isEmailConfigured } from '../services/emailOtp';
 
 interface AuthScreenProps {
@@ -33,7 +34,7 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
   const { setUser, loginByEmail } = useStore();
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const [step, setStep] = useState<Step>('form');
-  
+
   // Form fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -41,19 +42,25 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
   const [city, setCity] = useState('');
   const [business, setBusiness] = useState('');
   const [agreed, setAgreed] = useState(false);
-  
+
   // OTP fields
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [otpError, setOtpError] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [loading, setLoading] = useState(false);
-  
+
   // Pickers
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showBusinessPicker, setShowBusinessPicker] = useState(false);
-  
+
   // OTP input refs
   const otpRefs = useRef<(TextInput | null)[]>([]);
+
+  // Entrance animation
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+  }, []);
 
   // Countdown timer
   useEffect(() => {
@@ -64,170 +71,83 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
   }, [countdown]);
 
   const handleSendOTP = async () => {
-    if (!email || !isValidEmail(email)) {
-      Alert.alert('Lỗi', 'Vui lòng nhập email hợp lệ');
-      return;
-    }
-
-    // Validate form for register
+    if (!email || !isValidEmail(email)) { Alert.alert('Lỗi', 'Vui lòng nhập email hợp lệ'); return; }
     if (mode === 'register') {
-      if (!name || !city || !business) {
-        Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ thông tin');
-        return;
-      }
-      if (!agreed) {
-        Alert.alert('Chưa đồng ý', 'Vui lòng chấp nhận điều khoản');
-        return;
-      }
+      if (!name || !city || !business) { Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ thông tin'); return; }
+      if (!agreed) { Alert.alert('Chưa đồng ý', 'Vui lòng chấp nhận điều khoản'); return; }
     }
-
     setLoading(true);
-    
-    // Check if email exists
     const emailExists = await checkEmailExists(email);
-    
-    if (mode === 'register' && emailExists) {
-      setLoading(false);
-      Alert.alert('Email đã tồn tại', 'Vui lòng đăng nhập hoặc dùng email khác');
-      return;
-    }
-    
-    if (mode === 'login' && !emailExists) {
-      setLoading(false);
-      Alert.alert('Không tìm thấy', 'Email chưa đăng ký. Vui lòng đăng ký trước.');
-      return;
-    }
-
-    // Send OTP
+    if (mode === 'register' && emailExists) { setLoading(false); Alert.alert('Email đã tồn tại', 'Vui lòng đăng nhập hoặc dùng email khác'); return; }
+    if (mode === 'login' && !emailExists) { setLoading(false); Alert.alert('Không tìm thấy', 'Email chưa đăng ký. Vui lòng đăng ký trước.'); return; }
     const result = await sendEmailOTP(email, name);
     setLoading(false);
-
     if (result.success) {
-      setStep('otp');
-      setCountdown(60);
-      setOtp(['', '', '', '', '', '']);
-      setOtpError('');
-      
-      // Show OTP in dev mode (when EmailJS not configured)
-      if (result.otp) {
-        Alert.alert('🔐 Mã OTP (Dev Mode)', `Mã của bạn: ${result.otp}\n\nCấu hình EmailJS để gửi email thật.`);
-      } else {
-        Alert.alert('✉️ Đã gửi', `Kiểm tra email ${email} để lấy mã OTP`);
-      }
-    } else {
-      Alert.alert('Lỗi', result.message);
-    }
+      setStep('otp'); setCountdown(60); setOtp(['', '', '', '', '', '']); setOtpError('');
+      if (result.otp) { Alert.alert('🔐 Mã OTP (Dev Mode)', `Mã của bạn: ${result.otp}\n\nCấu hình EmailJS để gửi email thật.`); }
+      else { Alert.alert('✉️ Đã gửi', `Kiểm tra email ${email} để lấy mã OTP`); }
+    } else { Alert.alert('Lỗi', result.message); }
   };
 
   const handleOtpChange = (value: string, index: number) => {
     if (value.length > 1) value = value[value.length - 1];
-    
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-    setOtpError('');
-
-    // Auto focus next
-    if (value && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-
-    // Auto verify when complete
-    if (index === 5 && value) {
-      const fullOtp = newOtp.join('');
-      if (fullOtp.length === 6) {
-        handleVerifyOTP(fullOtp);
-      }
-    }
+    const newOtp = [...otp]; newOtp[index] = value; setOtp(newOtp); setOtpError('');
+    if (value && index < 5) { otpRefs.current[index + 1]?.focus(); }
+    if (index === 5 && value) { const fullOtp = newOtp.join(''); if (fullOtp.length === 6) { handleVerifyOTP(fullOtp); } }
   };
 
   const handleOtpKeyPress = (e: any, index: number) => {
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
+    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) { otpRefs.current[index - 1]?.focus(); }
   };
 
   const handleVerifyOTP = async (otpCode?: string) => {
     const code = otpCode || otp.join('');
-    if (code.length !== 6) {
-      setOtpError('Vui lòng nhập đủ 6 số');
-      return;
-    }
-
+    if (code.length !== 6) { setOtpError('Vui lòng nhập đủ 6 số'); return; }
     setLoading(true);
     const result = await verifyEmailOTP(email, code);
     setLoading(false);
-
     if (result.success) {
       if (mode === 'register') {
-        // Create new user
         const userObj = { name, email: email.toLowerCase(), phone: phone || undefined, city, business, createdAt: new Date() };
-        if (isFirebaseConfigured) {
-          try {
-            await addUserToFirebase(userObj);
-          } catch (e) {
-            console.warn('Add user failed', e);
-          }
-        }
-        setUser(userObj);
-        onRegister({ name, email, phone, city, business });
+        setUser(userObj); onRegister({ name, email, phone, city, business });
       } else {
-        // Login existing user
         const ok = await loginByEmail(email);
-        if (ok) {
-          onLogin();
-        } else {
-          Alert.alert('Lỗi', 'Đăng nhập thất bại');
-        }
+        if (ok) { onLogin(); } else { Alert.alert('Lỗi', 'Đăng nhập thất bại'); }
       }
-    } else {
-      setOtpError(result.message);
-    }
+    } else { setOtpError(result.message); }
   };
 
   const handleResendOTP = async () => {
     if (countdown > 0) return;
-    
-    setLoading(true);
-    const result = await sendEmailOTP(email, name);
-    setLoading(false);
-
+    setLoading(true); const result = await sendEmailOTP(email, name); setLoading(false);
     if (result.success) {
-      setCountdown(60);
-      setOtp(['', '', '', '', '', '']);
-      setOtpError('');
-      if (result.otp) {
-        Alert.alert('🔐 Mã OTP mới (Dev)', `Mã của bạn: ${result.otp}`);
-      }
-    } else {
-      Alert.alert('Lỗi', result.message);
-    }
+      setCountdown(60); setOtp(['', '', '', '', '', '']); setOtpError('');
+      if (result.otp) { Alert.alert('🔐 Mã OTP mới (Dev)', `Mã của bạn: ${result.otp}`); }
+    } else { Alert.alert('Lỗi', result.message); }
   };
 
-  const goBack = () => {
-    setStep('form');
-    setOtp(['', '', '', '', '', '']);
-    setOtpError('');
-  };
+  const goBack = () => { setStep('form'); setOtp(['', '', '', '', '', '']); setOtpError(''); };
 
-  const isFormValid = mode === 'register' 
-    ? name && email && isValidEmail(email) && city && business && agreed 
+  const isFormValid = mode === 'register'
+    ? name && email && isValidEmail(email) && city && business && agreed
     : email && isValidEmail(email);
 
-  // OTP Screen
+  // ─── OTP Screen ───
   if (step === 'otp') {
     return (
       <View style={styles.container}>
-        <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
+        <LinearGradient colors={['#EDE9FE', '#E0F2FE', '#F0FDF4', '#F8FAFC']} style={styles.gradientFull} />
         <SafeAreaView style={styles.safeArea}>
           <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.otpContainer}>
+            <Animated.View style={[styles.otpContainer, { opacity: fadeAnim }]}>
               <TouchableOpacity style={styles.backBtn} onPress={goBack}>
                 <Text style={styles.backTxt}>← Quay lại</Text>
               </TouchableOpacity>
 
               <View style={styles.otpHeader}>
-                <Text style={styles.otpIcon}>✉️</Text>
+                <LinearGradient colors={['#3B82F6', '#7C3AED']} style={styles.otpIconWrap}>
+                  <Text style={styles.otpIconEmoji}>✉️</Text>
+                </LinearGradient>
                 <Text style={styles.otpTitle}>Nhập mã xác thực</Text>
                 <Text style={styles.otpSubtitle}>
                   Mã OTP đã được gửi đến{'\n'}
@@ -240,7 +160,7 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
                   <TextInput
                     key={index}
                     ref={ref => { otpRefs.current[index] = ref; }}
-                    style={[styles.otpInput, otpError ? styles.otpInputError : undefined]}
+                    style={[styles.otpInput, digit ? styles.otpInputFilled : undefined, otpError ? styles.otpInputError : undefined]}
                     value={digit}
                     onChangeText={v => handleOtpChange(v, index)}
                     onKeyPress={e => handleOtpKeyPress(e, index)}
@@ -253,8 +173,8 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
 
               {otpError ? <Text style={styles.otpErrorTxt}>{otpError}</Text> : null}
 
-              <TouchableOpacity 
-                style={[styles.resendBtn, countdown > 0 && styles.resendBtnDisabled]} 
+              <TouchableOpacity
+                style={[styles.resendBtn, countdown > 0 && styles.resendBtnDisabled]}
                 onPress={handleResendOTP}
                 disabled={countdown > 0}
               >
@@ -269,21 +189,21 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
                 disabled={loading || otp.join('').length !== 6}
                 variant="primary"
               />
-            </View>
+            </Animated.View>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
     );
   }
 
-  // Form Screen
+  // ─── Form Screen ───
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
+      <LinearGradient colors={['#EDE9FE', '#E0F2FE', '#F0FDF4', '#F8FAFC']} style={styles.gradientFull} />
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.supportBtn}>
+            <TouchableOpacity style={styles.supportBtn} activeOpacity={0.8}>
               <Text style={styles.supportIcon}>🎧</Text>
               <Text style={styles.supportText}>Hỗ trợ</Text>
             </TouchableOpacity>
@@ -291,72 +211,60 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentInner}>
             {/* Logo */}
-            <View style={styles.logoSection}>
-              <View style={styles.logoWrap}>
-                <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.logoIcon}>
-                  <Text style={styles.logoEmoji}>✏️</Text>
-                </LinearGradient>
-                <Text style={styles.logoStar}>✨</Text>
-              </View>
-              <Text style={styles.logoText}>Hi-Note</Text>
-            </View>
+            <Animated.View style={[styles.logoSection, { opacity: fadeAnim }]}>
+              <Image source={require('../../assets/hinote-logo.png')} style={styles.logoImage} resizeMode="contain" />
+              <Text style={styles.logoSub}>Quản lý bán hàng thông minh</Text>
+            </Animated.View>
 
             {/* Mode toggle */}
             <View style={styles.modeToggle}>
-              <TouchableOpacity 
-                style={[styles.modeBtn, mode === 'register' && styles.modeBtnActive]} 
+              <TouchableOpacity
+                style={[styles.modeBtn, mode === 'register' && styles.modeBtnActive]}
                 onPress={() => setMode('register')}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.modeTxt, mode === 'register' && styles.modeTxtActive]}>Đăng ký</Text>
+                {mode === 'register' ? (
+                  <LinearGradient colors={Gradients.primary} style={styles.modeBtnGradient}>
+                    <Text style={styles.modeTxtActive}>Đăng ký</Text>
+                  </LinearGradient>
+                ) : (
+                  <Text style={styles.modeTxt}>Đăng ký</Text>
+                )}
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]} 
+              <TouchableOpacity
+                style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
                 onPress={() => setMode('login')}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.modeTxt, mode === 'login' && styles.modeTxtActive]}>Đăng nhập</Text>
+                {mode === 'login' ? (
+                  <LinearGradient colors={Gradients.primary} style={styles.modeBtnGradient}>
+                    <Text style={styles.modeTxtActive}>Đăng nhập</Text>
+                  </LinearGradient>
+                ) : (
+                  <Text style={styles.modeTxt}>Đăng nhập</Text>
+                )}
               </TouchableOpacity>
             </View>
 
-            {/* Form */}
-            <View style={styles.formCard}>
+            {/* Form Card */}
+            <GlassCard style={styles.formCard} intensity="strong">
               {mode === 'register' && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Họ tên</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Nhập họ tên của bạn"
-                    placeholderTextColor={Colors.textMuted}
-                    value={name}
-                    onChangeText={setName}
-                  />
+                  <TextInput style={styles.input} placeholder="Nhập họ tên của bạn" placeholderTextColor="#94A3B8" value={name} onChangeText={setName} />
                 </View>
               )}
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="example@email.com"
-                  placeholderTextColor={Colors.textMuted}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
+                <TextInput style={styles.input} placeholder="example@email.com" placeholderTextColor="#94A3B8" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
               </View>
 
               {mode === 'register' && (
                 <>
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>Số điện thoại (tuỳ chọn)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="0912 345 678"
-                      placeholderTextColor={Colors.textMuted}
-                      value={phone}
-                      onChangeText={setPhone}
-                      keyboardType="phone-pad"
-                    />
+                    <TextInput style={styles.input} placeholder="0912 345 678" placeholderTextColor="#94A3B8" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
                   </View>
 
                   <TouchableOpacity style={styles.inputGroup} onPress={() => setShowCityPicker(!showCityPicker)}>
@@ -419,7 +327,7 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
                   <Text style={styles.switchLink}>{mode === 'register' ? 'Đăng nhập' : 'Đăng ký ngay'}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </GlassCard>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -432,83 +340,103 @@ export function AuthScreen({ onRegister, onLogin }: AuthScreenProps) {
   );
 }
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  gradient: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  gradientFull: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   safeArea: { flex: 1 },
   keyboardView: { flex: 1 },
 
   header: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 20, paddingVertical: 12 },
-  supportBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 24, borderWidth: 1, borderColor: Colors.border },
+  supportBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 16, paddingVertical: 10,
+    borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
+    ...Shadows.sm,
+  },
   supportIcon: { fontSize: 14, marginRight: 6 },
-  supportText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  supportText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
 
   content: { flex: 1 },
   contentInner: { paddingHorizontal: 24, paddingBottom: 40 },
 
-  logoSection: { alignItems: 'center', marginTop: 20, marginBottom: 24 },
-  logoWrap: { position: 'relative', marginBottom: 12 },
-  logoIcon: { width: 56, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  logoEmoji: { fontSize: 28 },
-  logoStar: { position: 'absolute', top: -8, right: -12, fontSize: 20 },
-  logoText: { fontSize: 32, fontWeight: '800', color: Colors.text },
+  logoSection: { alignItems: 'center', marginTop: 16, marginBottom: 24 },
+  logoImage: { width: 120, height: 120, borderRadius: 28, marginBottom: 8 },
+  logoSub: { fontSize: 14, color: '#64748B', fontWeight: '500', marginTop: 4 },
 
-  modeToggle: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 12, padding: 4, marginBottom: 20, borderWidth: 1, borderColor: Colors.border },
-  modeBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
-  modeBtnActive: { backgroundColor: Colors.primary },
-  modeTxt: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
-  modeTxtActive: { color: '#fff' },
+  modeToggle: {
+    flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 16, padding: 4,
+    marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)',
+  },
+  modeBtn: { flex: 1, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  modeBtnActive: {},
+  modeBtnGradient: { width: '100%', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12 },
+  modeTxt: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  modeTxtActive: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 
-  formCard: { backgroundColor: '#fff', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: Colors.border },
+  formCard: { marginBottom: 20 },
 
   inputGroup: { marginBottom: 16 },
-  inputLabel: { fontSize: 13, fontWeight: '600', color: Colors.text, marginBottom: 8 },
-  input: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: Colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, color: Colors.text },
+  inputLabel: { fontSize: 13, fontWeight: '700', color: '#334155', marginBottom: 8, marginLeft: 4 },
+  input: {
+    backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, color: '#1E293B',
+  },
 
-  selectInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: Colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  selectText: { fontSize: 15, color: Colors.text },
-  placeholder: { color: Colors.textMuted },
-  selectIcon: { fontSize: 12, color: Colors.textMuted },
+  selectInput: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+  },
+  selectText: { fontSize: 15, color: '#1E293B' },
+  placeholder: { color: '#94A3B8' },
+  selectIcon: { fontSize: 12, color: '#94A3B8' },
 
-  pickerOptions: { backgroundColor: '#fff', borderWidth: 1, borderColor: Colors.border, borderRadius: 12, marginTop: -8, marginBottom: 16, overflow: 'hidden' },
-  pickerOption: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  pickerOptionText: { fontSize: 15, color: Colors.text },
-  pickerOptionActive: { color: Colors.primary, fontWeight: '600' },
+  pickerOptions: {
+    backgroundColor: '#FFF', borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 14, marginTop: -8, marginBottom: 16, overflow: 'hidden',
+  },
+  pickerOption: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  pickerOptionText: { fontSize: 15, color: '#1E293B' },
+  pickerOptionActive: { color: Colors.primary, fontWeight: '700' },
 
   termsRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 24 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.border, marginRight: 12, marginTop: 2, justifyContent: 'center', alignItems: 'center' },
+  checkbox: { width: 24, height: 24, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', marginRight: 12, marginTop: 1, justifyContent: 'center', alignItems: 'center' },
   checkboxChecked: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   checkmark: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  termsText: { flex: 1, fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
-  termsLink: { color: Colors.primary, fontWeight: '500' },
+  termsText: { flex: 1, fontSize: 13, color: '#64748B', lineHeight: 20 },
+  termsLink: { color: Colors.primary, fontWeight: '600' },
 
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 16 },
-  switchText: { fontSize: 14, color: Colors.textSecondary },
-  switchLink: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
+  switchText: { fontSize: 14, color: '#64748B' },
+  switchLink: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
 
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 20 },
-  footerText: { fontSize: 13, color: Colors.textMuted },
-  footerBrand: { fontSize: 13, color: Colors.green, fontWeight: '600' },
+  footerText: { fontSize: 13, color: '#94A3B8' },
+  footerBrand: { fontSize: 13, color: '#10B981', fontWeight: '700' },
 
   // OTP Screen
   otpContainer: { flex: 1, paddingHorizontal: 24, paddingTop: 20 },
   backBtn: { marginBottom: 20 },
-  backTxt: { fontSize: 15, color: Colors.primary, fontWeight: '600' },
+  backTxt: { fontSize: 15, color: Colors.primary, fontWeight: '700' },
 
   otpHeader: { alignItems: 'center', marginBottom: 32 },
-  otpIcon: { fontSize: 48, marginBottom: 16 },
-  otpTitle: { fontSize: 24, fontWeight: '700', color: Colors.text, marginBottom: 8 },
-  otpSubtitle: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  otpIconWrap: { width: 72, height: 72, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16, ...Shadows.purple },
+  otpIconEmoji: { fontSize: 32 },
+  otpTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A', marginBottom: 8, letterSpacing: -0.3 },
+  otpSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 22, fontWeight: '500' },
   otpEmail: { fontWeight: '700', color: Colors.primary },
 
   otpInputRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 16 },
-  otpInput: { width: 48, height: 56, borderRadius: 12, borderWidth: 2, borderColor: Colors.border, backgroundColor: '#fff', textAlign: 'center', fontSize: 22, fontWeight: '700', color: Colors.text },
-  otpInputError: { borderColor: Colors.red },
-  otpErrorTxt: { color: Colors.red, fontSize: 13, textAlign: 'center', marginBottom: 16 },
+  otpInput: {
+    width: 50, height: 58, borderRadius: 14, borderWidth: 2, borderColor: '#E2E8F0',
+    backgroundColor: 'rgba(255,255,255,0.8)', textAlign: 'center', fontSize: 24, fontWeight: '800', color: '#0F172A',
+  },
+  otpInputFilled: { borderColor: Colors.primary, backgroundColor: '#ECFDF5' },
+  otpInputError: { borderColor: '#EF4444' },
+  otpErrorTxt: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 16, fontWeight: '600' },
 
   resendBtn: { alignSelf: 'center', paddingVertical: 12, marginBottom: 24 },
   resendBtnDisabled: {},
-  resendTxt: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
-  resendTxtDisabled: { color: Colors.textMuted },
+  resendTxt: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+  resendTxtDisabled: { color: '#94A3B8' },
 });

@@ -9,18 +9,20 @@ import {
   Modal,
   Alert,
   Switch,
+  Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
-import { Colors, Fonts, Radius, Spacing } from '../constants/theme';
-import { BANK_CODES } from '../utils/format';
+import GlassCard from '../components/GlassCard';
+import { Colors, Gradients, Shadows } from '../constants/theme';
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { bankAccounts, addBankAccount, setDefaultBank, user, logout } = useStore();
+  const { bankAccounts, addBankAccount, setDefaultBank, user, logout, useMenuMatching, setUseMenuMatching } = useStore();
   const [modalVisible, setModalVisible] = useState(false);
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -44,386 +46,325 @@ export function SettingsScreen() {
     Alert.alert('✓ Thành công', 'Đã thêm tài khoản ngân hàng');
   };
 
+  const menuItems = [
+    { title: 'Quản lý thực đơn', icon: '🍲', route: 'Products', gradient: ['#FDF2F8', '#FCE7F3'] },
+    { title: 'Khách hàng', icon: '👥', route: 'Customers', gradient: ['#EFF6FF', '#DBEAFE'] },
+    { title: 'Kho hàng', icon: '📦', route: 'Stock', gradient: ['#F0FDF4', '#DCFCE7'] },
+    { title: 'Báo cáo', icon: '📊', route: 'Reports', gradient: ['#F5F3FF', '#EDE9FE'] },
+  ];
+
   return (
     <AnimatedScreen>
       <View style={styles.container}>
-      <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
+        <LinearGradient colors={Gradients.header} style={styles.gradient} />
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Profile Section */}
-          <View style={styles.profileSection}>
-            <View style={styles.avatarWrap}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarEmoji}>👤</Text>
-              </View>
-            </View>
-            <Text style={styles.userName}>{user?.name || 'Chủ quán'}</Text>
-            <Text style={styles.userPhone}>{user?.phone || ''}</Text>
-          </View>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 
-          {/* Account Card */}
-          <View style={styles.menuCard}>
-            <View style={styles.menuItem}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#DBEAFE' }]}>
-                  <Text style={styles.menuEmoji}>👤</Text>
-                </View>
-                <Text style={styles.menuLabel}>Chủ quán Nguyễn Thanh Liêm</Text>
-              </View>
-              <View style={styles.checkBadge}>
-                <Text style={styles.checkIcon}>✓</Text>
-              </View>
-            </View>
-
-            <View style={[styles.menuItem, styles.menuItemBorder]}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#F5F3FF' }]}>
-                  <Text style={styles.menuEmoji}>🔄</Text>
-                </View>
-                <Text style={styles.menuLinkText}>Quét QR để vào quán khác</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => logout()}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#FEE2E2' }]}>
-                  <Text style={styles.menuEmoji}>🔓</Text>
-                </View>
-                <Text style={[styles.menuLabel, { color: Colors.red }]}>Đăng xuất</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {/* Plan Card */}
-          <TouchableOpacity style={styles.planCard} activeOpacity={0.8}>
-            <View style={styles.planLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: '#DCFCE7' }]}>
-                <Text style={styles.menuEmoji}>🎁</Text>
-              </View>
-              <View>
-                <Text style={styles.planTitle}>Gói cơ bản</Text>
-                <Text style={styles.planDesc}>Còn 300 lượt tạ...</Text>
-              </View>
-            </View>
-            <Text style={styles.planArrow}>›</Text>
-          </TouchableOpacity>
-
-          {/* Quick Access - New Features */}
-          <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Products')}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#DBEAFE' }]}>
-                  <Text style={styles.menuEmoji}>📦</Text>
-                </View>
-                <Text style={styles.menuLabel}>Sản phẩm</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Customers')}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#F5F3FF' }]}>
-                  <Text style={styles.menuEmoji}>👥</Text>
-                </View>
-                <Text style={styles.menuLabel}>Khách hàng</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Stock')}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#FEF3C7' }]}>
-                  <Text style={styles.menuEmoji}>📊</Text>
-                </View>
-                <Text style={styles.menuLabel}>Kho hàng</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Reports')}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#DCFCE7' }]}>
-                  <Text style={styles.menuEmoji}>📈</Text>
-                </View>
-                <Text style={styles.menuLabel}>Báo cáo</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => navigation.navigate('Notifications')}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#FEE2E2' }]}>
-                  <Text style={styles.menuEmoji}>🔔</Text>
-                </View>
-                <Text style={styles.menuLabel}>Thông báo</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Settings Card */}
-          <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#DBEAFE' }]}>
-                  <Text style={styles.menuEmoji}>📱</Text>
-                </View>
-                <Text style={styles.menuLinkText}>Thêm QR để bật loa báo ting ting</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#F5F3FF' }]}>
-                  <Text style={styles.menuEmoji}>👥</Text>
-                </View>
-                <Text style={styles.menuLabel}>Thêm nhân viên</Text>
-                <View style={styles.proBadge}>
-                  <Text style={styles.proText}>Pro</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]}>
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: '#FEF3C7' }]}>
-                  <Text style={styles.menuEmoji}>💾</Text>
-                </View>
-                <Text style={styles.menuLabel}>Quản lý dữ liệu</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Hotline */}
-          <View style={styles.hotlineCard}>
-            <Text style={styles.hotlineIcon}>📞</Text>
-            <Text style={styles.hotlineLabel}>Gọi tổng đài:</Text>
-            <Text style={styles.hotlineNumber}>1900 4512</Text>
-          </View>
-
-          <View style={{ height: 120 }} />
-        </ScrollView>
-      </SafeAreaView>
-
-      {/* Add Bank Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thêm tài khoản ngân hàng</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>Chọn ngân hàng</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bankPicker}>
-              {Object.keys(BANK_CODES).map((name) => (
-                <TouchableOpacity
-                  key={name}
-                  style={[styles.bankOption, bankName === name && styles.bankOptionActive]}
-                  onPress={() => setBankName(name)}
+            {/* ─── Profile Card ─── */}
+            <GlassCard style={styles.profileCard} intensity="strong">
+              {/* Avatar with Gradient Ring */}
+              <View style={styles.avatarOuter}>
+                <LinearGradient
+                  colors={Gradients.primary}
+                  style={styles.avatarRing}
                 >
-                  <Text style={[styles.bankOptionText, bankName === name && styles.bankOptionTextActive]}>
-                    {name}
-                  </Text>
+                  <View style={styles.avatarInner}>
+                    <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || 'U'}</Text>
+                  </View>
+                </LinearGradient>
+                <View style={styles.verifyBadge}>
+                  <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.verifyGradient}>
+                    <Text style={styles.verifyIcon}>✓</Text>
+                  </LinearGradient>
+                </View>
+              </View>
+
+              <Text style={styles.userName}>{user?.name || 'Chủ quán'}</Text>
+              <Text style={styles.userRole}>{user?.business || 'Chủ quán'}{user?.city ? ` • ${user.city}` : ''}</Text>
+
+              <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.8}>
+                <LinearGradient
+                  colors={['rgba(16,185,129,0.1)', 'rgba(16,185,129,0.05)']}
+                  style={styles.editProfileGradient}
+                >
+                  <Text style={styles.editProfileText}>✏️ Chỉnh sửa hồ sơ</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </GlassCard>
+
+            {/* ─── AI Settings ─── */}
+            <Text style={styles.sectionTitle}>🧠 Cấu hình AI</Text>
+            <GlassCard style={styles.settingsCard} intensity="strong">
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <LinearGradient colors={Gradients.purpleSoft} style={styles.settingIcon}>
+                    <Text style={{ fontSize: 18 }}>✨</Text>
+                  </LinearGradient>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>Tự động khớp menu</Text>
+                    <Text style={styles.settingDesc}>AI tự chọn món gần đúng nhất</Text>
+                  </View>
+                </View>
+                <Switch
+                  trackColor={{ false: '#E2E8F0', true: Colors.primary }}
+                  thumbColor={'#FFFFFF'}
+                  onValueChange={setUseMenuMatching}
+                  value={useMenuMatching}
+                />
+              </View>
+            </GlassCard>
+
+            {/* ─── Store Management Grid ─── */}
+            <Text style={styles.sectionTitle}>🏪 Quản lý cửa hàng</Text>
+            <View style={styles.menuGrid}>
+              {menuItems.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.menuItem}
+                  onPress={() => navigation.navigate(item.route)}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={item.gradient as [string, string]}
+                    style={styles.menuIconBox}
+                  >
+                    <Text style={{ fontSize: 24 }}>{item.icon}</Text>
+                  </LinearGradient>
+                  <Text style={styles.menuTitle}>{item.title}</Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </View>
 
-            <Text style={styles.inputLabel}>Số tài khoản</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={accountNumber}
-              onChangeText={setAccountNumber}
-              placeholder="VD: 1234567890"
-              keyboardType="numeric"
-              placeholderTextColor={Colors.textMuted}
-            />
-
-            <Text style={styles.inputLabel}>Tên chủ tài khoản</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={accountName}
-              onChangeText={setAccountName}
-              placeholder="VD: NGUYEN VAN A"
-              autoCapitalize="characters"
-              placeholderTextColor={Colors.textMuted}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Hủy</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.saveBtn} onPress={handleAddBank}>
-                <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.saveBtnGradient}>
-                  <Text style={styles.saveBtnText}>Thêm tài khoản</Text>
+            {/* ─── Bank Accounts ─── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>🏦 Tài khoản nhận tiền</Text>
+              <TouchableOpacity onPress={() => setModalVisible(true)} activeOpacity={0.7}>
+                <LinearGradient colors={Gradients.primary} style={styles.addBankBtn}>
+                  <Text style={styles.addBankText}>+ Thêm</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
+
+            <GlassCard style={styles.bankCard} intensity="strong" noPadding>
+              {bankAccounts.length === 0 ? (
+                <View style={styles.emptyBank}>
+                  <Text style={styles.emptyBankEmoji}>🏦</Text>
+                  <Text style={styles.emptyBankText}>Chưa có tài khoản ngân hàng</Text>
+                  <Text style={styles.emptyBankSub}>Thêm tài khoản để nhận thanh toán QR</Text>
+                </View>
+              ) : (
+                bankAccounts.map((bank, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[styles.bankRow, index > 0 && styles.rowBorder]}
+                    onPress={() => setDefaultBank(bank.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.bankLogoWrap}>
+                      <Image
+                        source={{ uri: `https://img.vietqr.io/image/${bank.bankName}-logo.png` }}
+                        style={styles.bankLogo}
+                      />
+                    </View>
+                    <View style={styles.bankInfo}>
+                      <Text style={styles.bankName}>{bank.bankName}</Text>
+                      <Text style={styles.bankNumber}>{bank.accountNumber}</Text>
+                      <Text style={styles.bankOwner}>{bank.accountName}</Text>
+                    </View>
+                    {bank.isDefault && (
+                      <LinearGradient colors={Gradients.primarySoft} style={styles.defaultBadge}>
+                        <Text style={styles.defaultText}>✓ Mặc định</Text>
+                      </LinearGradient>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
+            </GlassCard>
+
+            {/* ─── Logout ─── */}
+            <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
+              <Text style={styles.logoutText}>Đăng xuất</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 120 }} />
+          </ScrollView>
+        </SafeAreaView>
+
+        {/* ─── Add Bank Modal ─── */}
+        <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Thêm tài khoản ngân hàng</Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Ngân hàng</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="VD: MB, VCB, ACB..."
+                  placeholderTextColor="#94A3B8"
+                  value={bankName}
+                  onChangeText={setBankName}
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Số tài khoản</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nhập số tài khoản"
+                  placeholderTextColor="#94A3B8"
+                  value={accountNumber}
+                  onChangeText={setAccountNumber}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Chủ tài khoản</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Tên chủ tài khoản"
+                  placeholderTextColor="#94A3B8"
+                  value={accountName}
+                  onChangeText={setAccountName}
+                  autoCapitalize="characters"
+                />
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)} activeOpacity={0.8}>
+                  <Text style={styles.cancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtnWrap} onPress={handleAddBank} activeOpacity={0.85}>
+                  <LinearGradient colors={Gradients.primary} style={styles.saveBtn}>
+                    <Text style={styles.saveText}>Lưu tài khoản</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+
       </View>
     </AnimatedScreen>
   );
 }
 
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  gradient: { position: 'absolute', left: 0, right: 0, top: 0, height: 400 },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  gradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 350 },
   safeArea: { flex: 1 },
-  content: { flex: 1, paddingHorizontal: 16 },
+  content: { padding: 16 },
 
-  profileSection: { alignItems: 'center', paddingVertical: 32 },
-  avatarWrap: { marginBottom: 16 },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#E2E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
+  // Profile Card
+  profileCard: { alignItems: 'center', marginBottom: 20, marginTop: 8 },
+  avatarOuter: { marginBottom: 14, position: 'relative' },
+  avatarRing: {
+    width: 84, height: 84, borderRadius: 42,
+    justifyContent: 'center', alignItems: 'center',
+    padding: 3,
   },
-  avatarEmoji: { fontSize: 40 },
-  userName: { fontSize: 24, fontWeight: '700', color: Colors.text, marginBottom: 4 },
-  userPhone: { fontSize: 15, color: Colors.textSecondary },
-
-  menuCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  avatarInner: {
+    width: '100%', height: '100%', borderRadius: 40,
+    backgroundColor: '#FFF',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarText: { fontSize: 32, fontWeight: '800', color: Colors.primary },
+  verifyBadge: {
+    position: 'absolute', bottom: 0, right: -2,
+    width: 26, height: 26, borderRadius: 13,
     overflow: 'hidden',
+    borderWidth: 2.5, borderColor: '#FFF',
   },
+  verifyGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  verifyIcon: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+  userName: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 4, letterSpacing: -0.3 },
+  userRole: { fontSize: 13, color: '#64748B', fontWeight: '500', marginBottom: 12 },
+  editProfileBtn: { borderRadius: 20, overflow: 'hidden' },
+  editProfileGradient: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 20 },
+  editProfileText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+
+  // Section
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#334155', marginBottom: 12, marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+
+  // AI Settings Card
+  settingsCard: { marginBottom: 20 },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  settingIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  settingInfo: { flex: 1 },
+  settingLabel: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  settingDesc: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+
+  // Menu Grid
+  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  menuItemBorder: { borderTopWidth: 1, borderTopColor: Colors.borderLight },
-  menuItemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  menuEmoji: { fontSize: 18 },
-  menuLabel: { fontSize: 15, color: Colors.text, fontWeight: '500' },
-  menuLinkText: { fontSize: 15, color: Colors.primary, fontWeight: '500' },
-  menuArrow: { fontSize: 20, color: Colors.textMuted },
-  checkBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkIcon: { color: Colors.white, fontSize: 12, fontWeight: '700' },
-  proBadge: {
-    backgroundColor: Colors.text,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  proText: { color: Colors.white, fontSize: 10, fontWeight: '700' },
-
-  planCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    width: '48%',
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  planLeft: { flexDirection: 'row', alignItems: 'center' },
-  planTitle: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  planDesc: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
-  planArrow: { fontSize: 24, color: Colors.textMuted },
-
-  hotlineCard: {
-    flexDirection: 'row',
+    borderColor: 'rgba(255,255,255,0.5)',
+    padding: 18,
+    borderRadius: 22,
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    ...Shadows.card,
   },
-  hotlineIcon: { fontSize: 20, marginRight: 12 },
-  hotlineLabel: { fontSize: 15, color: Colors.textSecondary, marginRight: 8 },
-  hotlineNumber: { fontSize: 18, fontWeight: '700', color: Colors.primary },
+  menuIconBox: { width: 52, height: 52, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  menuTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  // Bank Section
+  addBankBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14 },
+  addBankText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
+
+  bankCard: { marginBottom: 20 },
+  bankRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  rowBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  bankLogoWrap: {
+    width: 44, height: 44, borderRadius: 14,
+    backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center',
+    marginRight: 12, overflow: 'hidden',
+  },
+  bankLogo: { width: 36, height: 36, borderRadius: 8 },
+  bankInfo: { flex: 1 },
+  bankName: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  bankNumber: { fontSize: 13, color: '#334155', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  bankOwner: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
+  defaultBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  defaultText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  emptyBank: { alignItems: 'center', padding: 24 },
+  emptyBankEmoji: { fontSize: 32, marginBottom: 8 },
+  emptyBankText: { fontSize: 15, fontWeight: '600', color: '#334155', marginBottom: 4 },
+  emptyBankSub: { fontSize: 12, color: '#94A3B8' },
+
+  // Logout
+  logoutBtn: {
+    backgroundColor: '#FEF2F2', paddingVertical: 16, borderRadius: 18, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.1)',
+  },
+  logoutText: { color: '#EF4444', fontWeight: '700', fontSize: 15 },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
   modalContent: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
+    backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingTop: 16,
   },
   modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
+    width: 40, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0',
+    alignSelf: 'center', marginBottom: 16,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+  modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 20, color: '#0F172A', textAlign: 'center' },
+  inputGroup: { marginBottom: 14 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: '#64748B', marginBottom: 6, marginLeft: 4 },
+  input: {
+    backgroundColor: '#F8FAFC', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 15, borderWidth: 1.5, borderColor: '#E2E8F0', color: '#1E293B',
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
-  modalCloseText: { fontSize: 20, color: Colors.textMuted },
-  inputLabel: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginBottom: 8 },
-  bankPicker: { marginBottom: 16 },
-  bankOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: Colors.inputBg,
-    marginRight: 8,
-  },
-  bankOptionActive: { backgroundColor: Colors.primary },
-  bankOptionText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
-  bankOptionTextActive: { color: Colors.white, fontWeight: '600' },
-  modalInput: {
-    backgroundColor: Colors.inputBg,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: Colors.text,
-    marginBottom: 16,
-  },
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  modalButtons: { flexDirection: 'row', gap: 12, marginTop: 8 },
   cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: Colors.inputBg,
-    alignItems: 'center',
+    flex: 1, padding: 15, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center',
   },
-  cancelBtnText: { fontSize: 15, fontWeight: '600', color: Colors.textSecondary },
-  saveBtn: { flex: 1, borderRadius: 12, overflow: 'hidden' },
-  saveBtnGradient: { paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { fontSize: 15, fontWeight: '600', color: Colors.white },
+  cancelText: { fontWeight: '600', color: '#64748B', fontSize: 15 },
+  saveBtnWrap: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  saveBtn: { padding: 15, alignItems: 'center', borderRadius: 16 },
+  saveText: { fontWeight: '700', color: '#FFF', fontSize: 15 },
 });

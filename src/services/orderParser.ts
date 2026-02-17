@@ -5,29 +5,44 @@ import { GROQ_API_KEY } from '../config/keys';
 const GROQ_KEY = GROQ_API_KEY;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
+export interface ParseOptions {
+  useMenuMatching?: boolean; // Bật/tắt tính năng khớp menu
+}
+
 export async function parseVoiceToOrder(
   voiceText: string,
-  existingProducts: Product[]
+  existingProducts: Product[],
+  options: ParseOptions = { useMenuMatching: true }
 ): Promise<AIParseResult> {
-  console.log('🤖 Parsing with Groq AI:', voiceText);
+  console.log('🤖 Parsing with Groq AI:', voiceText, 'useMenuMatching:', options.useMenuMatching);
 
-  const productList = existingProducts.map(p => ({
+  const productList = options.useMenuMatching ? existingProducts.map(p => ({
     id: p.id,
     name: p.name,
     aliases: p.aliases,
     price: p.price,
-  }));
+  })) : [];
 
-  const systemPrompt = `Bạn là AI parser đơn hàng cho app bán hàng Việt Nam. Từ câu nói của người bán, trích xuất thông tin đơn hàng.
-
-DANH SÁCH SẢN PHẨM ĐÃ CÓ:
+  const menuSection = options.useMenuMatching && productList.length > 0
+    ? `
+DANH SÁCH SẢN PHẨM ĐÃ CÓ (chỉ tham khảo):
 ${JSON.stringify(productList, null, 2)}
 
+QUY TẮC KHỚP SẢN PHẨM:
+- CHỈ khớp sản phẩm khi tên HOÀN TOÀN CHÍNH XÁC (không phải "gần giống")
+- VÍ DỤ: "phở bò" CHỈ khớp với "Phở bò", KHÔNG khớp với "Phở bò tái", "Phở gà"
+- NẾU voice text có giá (VD: "phở bò 35k"), LUÔN ưu tiên dùng giá từ voice text, KHÔNG dùng giá từ menu
+- Nếu không chắc chắn tên có khớp không, ĐỂ matchedProductId = null
+`
+    : '';
+
+  const systemPrompt = `Bạn là AI parser đơn hàng cho app bán hàng Việt Nam. Từ câu nói của người bán, trích xuất thông tin đơn hàng.
+${menuSection}
 YÊU CẦU:
-- Trích xuất danh sách sản phẩm (tên, số lượng)
+- Trích xuất danh sách sản phẩm (tên, số lượng, giá nếu có)
 - Tìm số bàn nếu có (VD: "bàn 3", "bàn số 5", "bài 2" = bàn 2)
-- Nếu sản phẩm khớp với danh sách có sẵn, trả về matchedProductId
-- Nếu có giá trong câu nói (VD: "phở 35k"), lưu vào price
+- LUÔN ưu tiên giá từ câu nói gốc, KHÔNG tự động thay đổi giá
+- Nếu không có giá trong câu nói, để price = null
 
 LƯU Ý TIẾNG VIỆT:
 - "tô", "ly", "cái", "phần", "suất" là đơn vị đếm
@@ -81,7 +96,7 @@ TRẢ VỀ JSON THUẦN (không markdown):
         let jsonStr = jsonMatch[0]
           .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
           .replace(/,\s*}/g, '}'); // Remove trailing commas in objects
-        
+
         const result = JSON.parse(jsonStr) as AIParseResult;
         console.log('✅ Groq parsed:', result);
         return result;
@@ -90,7 +105,7 @@ TRẢ VỀ JSON THUẦN (không markdown):
         throw parseErr;
       }
     }
-    
+
     throw new Error('Invalid JSON');
   } catch (error) {
     console.error('AI Parse Error:', error);
@@ -113,23 +128,28 @@ function simpleParser(text: string, products: Product[]): AIParseResult {
     result.table = tableMatch[1];
   }
 
-  // Pattern: tên sản phẩm + giá (VD: "Phở bò 35k")
-  const itemRegex = /([a-zA-ZÀ-ỹ\s]+?)\s*(\d+)\s*(?:k|nghìn|ngàn)/gi;
+  // Pattern: (Quantity?) + Tên sản phẩm + giá (VD: "Phở bò 35k", "1 cà phê 20k")
+  // Regex: 
+  // (?:(\d+)\s+)? -> Group 1 (Optional): Quantity (digits followed by space)
+  // ([a-zA-ZÀ-ỹ0-9\s]+?) -> Group 2: Name (allow digits inside name too, but non-greedy)
+  // \s*(\d+)\s*(?:k|nghìn|ngàn) -> Group 3: Price
+  const itemRegex = /(?:(\d+)\s+)?([a-zA-ZÀ-ỹ0-9\s]+?)\s*(\d+)\s*(?:k|nghìn|ngàn)/gi;
   let match;
 
   while ((match = itemRegex.exec(text)) !== null) {
-    const name = match[1].trim();
-    let price = parseInt(match[2]) * 1000;
+    const quantity = match[1] ? parseInt(match[1]) : 1;
+    const name = match[2].trim();
+    let price = parseInt(match[3]) * 1000;
 
-    if (name.length > 1) {
-      const matchedProduct = products.find(p => 
-        p.name.toLowerCase().includes(name.toLowerCase()) ||
-        name.toLowerCase().includes(p.name.toLowerCase())
+    if (name.length > 0) {
+      const matchedProduct = products.find(p =>
+        p.name.toLowerCase() === name.toLowerCase() ||
+        p.aliases.some(a => a.toLowerCase() === name.toLowerCase())
       );
 
       result.items.push({
         name: matchedProduct?.name || name,
-        quantity: 1,
+        quantity: quantity,
         matchedProductId: matchedProduct?.id || null,
         price: matchedProduct?.price || price,
       });

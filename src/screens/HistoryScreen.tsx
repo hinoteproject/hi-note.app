@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,15 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Alert,
+  ScrollView,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
-import { Colors, Fonts, Radius, Spacing, Shadows } from '../constants/theme';
+import { Colors, Gradients, Shadows } from '../constants/theme';
 import { Order } from '../types';
 
 export function HistoryScreen() {
@@ -21,380 +22,315 @@ export function HistoryScreen() {
   const { orders, updateOrderPayment } = useStore();
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
-  const [selectedMode, setSelectedMode] = useState<'day'|'month'|'year'>('day');
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  const filters = [
-    { key: 'all', label: 'Tất cả', count: orders.length },
-    { key: 'paid', label: 'Đã TT', count: orders.filter(o => o.paymentStatus === 'paid').length },
-    { key: 'pending', label: 'Chờ TT', count: orders.filter(o => o.paymentStatus === 'pending').length },
-  ];
+  const filters = useMemo(() => [
+    { key: 'all', label: 'Tất cả', count: orders.length, emoji: '📋' },
+    { key: 'paid', label: 'Đã TT', count: orders.filter(o => o.paymentStatus === 'paid').length, emoji: '✅' },
+    { key: 'pending', label: 'Chờ TT', count: orders.filter(o => o.paymentStatus === 'pending').length, emoji: '⏳' },
+  ], [orders]);
 
-  const filteredOrders = orders.filter(o => {
-    // filter by status
-    if (activeFilter === 'paid' && o.paymentStatus !== 'paid') return false;
-    if (activeFilter === 'pending' && o.paymentStatus !== 'pending') return false;
-
-    // filter by search text
-    if (searchText.trim()) {
-      const lower = searchText.toLowerCase();
-      if (!o.items.some(i => i.productName.toLowerCase().includes(lower)) && !(o.tableNumber || '').toLowerCase().includes(lower)) {
-        return false;
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      if (activeFilter === 'paid' && o.paymentStatus !== 'paid') return false;
+      if (activeFilter === 'pending' && o.paymentStatus !== 'pending') return false;
+      if (searchText.trim()) {
+        const lower = searchText.toLowerCase();
+        const nameMatch = o.items.some(i => i.productName.toLowerCase().includes(lower));
+        const billNameMatch = (o.billName || '').toLowerCase().includes(lower);
+        const tableMatch = (o.tableNumber || '').toLowerCase().includes(lower);
+        if (!nameMatch && !billNameMatch && !tableMatch) return false;
       }
-    }
-
-    // filter by selected date/mode
-    const od = new Date(o.createdAt);
-    if (selectedMode === 'day') {
-      const a = new Date(selectedDate); a.setHours(0,0,0,0);
-      const b = new Date(od); b.setHours(0,0,0,0);
-      return a.getTime() === b.getTime();
-    } else if (selectedMode === 'month') {
-      return od.getFullYear() === selectedDate.getFullYear() && od.getMonth() === selectedDate.getMonth();
-    } else if (selectedMode === 'year') {
-      return od.getFullYear() === selectedDate.getFullYear();
-    }
-    return true;
-  });
+      return true;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [orders, activeFilter, searchText]);
 
   const formatMoney = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount);
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: Date | string) => {
     const d = new Date(date);
-    return d.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const handleMarkPaid = (orderId: string) => {
-    Alert.alert('✓ Xác nhận thanh toán', 'Đánh dấu đơn này đã thanh toán?', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Xác nhận', onPress: () => updateOrderPayment(orderId, 'paid') },
-    ]);
+    return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   const renderOrder = ({ item, index }: { item: Order; index: number }) => {
     const isPaid = item.paymentStatus === 'paid';
-    
+    const totalItems = item.items.reduce((sum, i) => sum + i.quantity, 0);
+
     return (
-      <TouchableOpacity style={styles.orderCard} activeOpacity={0.7} onPress={() => navigation.navigate('InvoiceDetail', { orderId: item.id })}>
-        <View style={styles.orderHeader}>
-          <View style={styles.orderHeaderLeft}>
-            <View style={[styles.orderNumber, isPaid ? styles.orderNumberPaid : styles.orderNumberPending]}>
-              <Text style={[styles.orderNumberText, { color: isPaid ? Colors.green : Colors.orange }]}>
-                #{orders.length - index}
-              </Text>
+      <TouchableOpacity
+        style={styles.orderCard}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('InvoiceDetail', { orderId: item.id })}
+      >
+        {/* Left accent bar */}
+        <View style={[styles.accentBar, { backgroundColor: isPaid ? '#10B981' : '#F59E0B' }]} />
+
+        <View style={styles.cardContent}>
+          {/* Header */}
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <Text style={styles.billName} numberOfLines={1}>{item.billName || 'Khách lẻ'}</Text>
+              <View style={styles.metaRow}>
+                <Text style={styles.orderTime}>{formatTime(item.createdAt)}</Text>
+                {item.tableNumber && (
+                  <View style={styles.tableBadge}>
+                    <Text style={styles.tableBadgeText}>🪑 Bàn {item.tableNumber}</Text>
+                  </View>
+                )}
+              </View>
             </View>
-            <View>
-              <Text style={styles.orderCustomer}>
-                {item.tableNumber ? `🪑 Bàn ${item.tableNumber}` : '👤 Khách lẻ'}
+            <View style={[styles.statusBadge, isPaid ? styles.statusPaid : styles.statusPending]}>
+              <Text style={[styles.statusText, isPaid ? styles.statusTextPaid : styles.statusTextPending]}>
+                {isPaid ? '✓ Đã TT' : '⏳ Chờ'}
               </Text>
-              <Text style={styles.orderTime}>{formatTime(item.createdAt)}</Text>
             </View>
           </View>
-          
-          <View style={[styles.statusBadge, isPaid ? styles.statusPaid : styles.statusPending]}>
-            <Text style={styles.statusIcon}>{isPaid ? '✓' : '⏳'}</Text>
-            <Text style={[styles.statusText, isPaid ? styles.statusTextPaid : styles.statusTextPending]}>
-              {isPaid ? 'Đã TT' : 'Chờ TT'}
-            </Text>
+
+          {/* Items */}
+          <View style={styles.itemsSection}>
+            {item.items.slice(0, 2).map((orderItem, idx) => (
+              <View key={idx} style={styles.itemRow}>
+                <Text style={styles.itemQty}>{orderItem.quantity}×</Text>
+                <Text style={styles.itemName} numberOfLines={1}>{orderItem.productName}</Text>
+                <Text style={styles.itemPrice}>{formatMoney(orderItem.subtotal)}đ</Text>
+              </View>
+            ))}
+            {item.items.length > 2 && (
+              <Text style={styles.moreItems}>+{item.items.length - 2} món khác</Text>
+            )}
           </View>
-        </View>
 
-        <View style={styles.orderItems}>
-          {item.items.slice(0, 3).map((orderItem, idx) => (
-            <View key={idx} style={styles.orderItemRow}>
-              <Text style={styles.orderItemName}>
-                {orderItem.productName}
-                <Text style={styles.orderItemQty}> ×{orderItem.quantity}</Text>
-              </Text>
-              <Text style={styles.orderItemPrice}>{formatMoney(orderItem.subtotal)}đ</Text>
-            </View>
-          ))}
-          {item.items.length > 3 && (
-            <Text style={styles.moreItems}>+{item.items.length - 3} sản phẩm khác...</Text>
-          )}
-        </View>
-
-        <View style={styles.orderFooter}>
-          <View>
-            <Text style={styles.totalLabel}>Tổng cộng</Text>
-            <Text style={[styles.totalAmount, { color: isPaid ? Colors.green : Colors.text }]}>
+          {/* Footer */}
+          <View style={styles.cardFooter}>
+            <Text style={styles.totalLabel}>{totalItems} món</Text>
+            <Text style={[styles.totalAmount, { color: isPaid ? Colors.primary : Colors.orange }]}>
               {formatMoney(item.totalAmount)}đ
             </Text>
           </View>
-          
-          {!isPaid && (
-            <TouchableOpacity style={styles.markPaidBtn} onPress={() => handleMarkPaid(item.id)}>
-              <LinearGradient colors={[Colors.greenLight, Colors.green]} style={styles.markPaidGradient}>
-                <Text style={styles.markPaidText}>✓ Đã thanh toán</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
         </View>
       </TouchableOpacity>
     );
   };
 
-  const EmptyState = () => (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIconWrap}>
-        <LinearGradient colors={[Colors.primaryBg, '#DBEAFE']} style={styles.emptyIconGradient}>
-          <Text style={styles.emptyIcon}>📋</Text>
-        </LinearGradient>
-      </View>
-      <Text style={styles.emptyTitle}>Chưa có hoá đơn</Text>
-      <Text style={styles.emptyDesc}>Hoá đơn sẽ xuất hiện ở đây{'\n'}sau khi bạn tạo đơn hàng</Text>
-      <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('Bán hàng')}>
-        <LinearGradient colors={[Colors.purpleLight, Colors.purple]} style={styles.emptyBtnGradient}>
-          <Text style={styles.emptyBtnText}>🎤 Tạo đơn mới</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const totalRevenue = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-  const paidRevenue = filteredOrders.filter(o => o.paymentStatus === 'paid').reduce((sum, o) => sum + o.totalAmount, 0);
-
   return (
     <AnimatedScreen>
       <View style={styles.container}>
-      <LinearGradient colors={['#E8F4FE', '#E0EAFC', '#F8FAFC']} style={styles.gradient} />
+        <LinearGradient colors={Gradients.header} style={styles.gradient} />
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.header}>
-          <View>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          {/* Header */}
+          <View style={styles.header}>
             <Text style={styles.title}>Hoá đơn</Text>
-            <Text style={styles.subTitle}>{selectedMode === 'day' ? selectedDate.toLocaleDateString() : selectedMode === 'month' ? `${selectedDate.getMonth()+1}/${selectedDate.getFullYear()}` : selectedDate.getFullYear()}</Text>
+            <Text style={styles.subtitle}>{orders.length} đơn hàng</Text>
           </View>
-          <TouchableOpacity
-            style={styles.calendarBtn}
-            onPress={() => {
-              setSelectedMode(m => m === 'day' ? 'month' : m === 'month' ? 'year' : 'day');
-            }}
-          >
-            <Text style={styles.calendarIcon}>📅</Text>
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Tổng doanh thu</Text>
-            <Text style={styles.summaryValue}>{formatMoney(totalRevenue)}đ</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Đã thu</Text>
-            <Text style={[styles.summaryValue, { color: Colors.green }]}>{formatMoney(paidRevenue)}đ</Text>
-          </View>
-        </View>
+          {/* Glass Search Bar */}
+          <View style={styles.filterSection}>
+            <View style={styles.searchBar}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Tìm tên món, bàn, khách..."
+                placeholderTextColor="#94A3B8"
+                value={searchText}
+                onChangeText={setSearchText}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchText('')}>
+                  <Text style={styles.clearIcon}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-        <View style={styles.searchWrap}>
-          <View style={styles.searchBox}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Tìm hoá đơn..."
-              placeholderTextColor={Colors.textMuted}
-              value={searchText}
-              onChangeText={setSearchText}
-            />
-            {searchText.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchText('')}>
-                <Text style={styles.clearSearch}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.filterTabs}>
-          {filters.map((filter) => (
-            <TouchableOpacity
-              key={filter.key}
-              style={[styles.filterTab, activeFilter === filter.key && styles.filterTabActive]}
-              onPress={() => setActiveFilter(filter.key)}
+            {/* Filter Chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
             >
-              <Text style={[styles.filterTabText, activeFilter === filter.key && styles.filterTabTextActive]}>
-                {filter.label}
-              </Text>
-              <View style={[styles.filterCount, activeFilter === filter.key && styles.filterCountActive]}>
-                <Text style={[styles.filterCountText, activeFilter === filter.key && styles.filterCountTextActive]}>
-                  {filter.count}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+              {filters.map(f => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
+                  onPress={() => setActiveFilter(f.key)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.filterText, activeFilter === f.key && styles.filterTextActive]}>
+                    {f.label}
+                  </Text>
+                  <View style={[styles.badge, activeFilter === f.key && styles.badgeActive]}>
+                    <Text style={[styles.badgeText, activeFilter === f.key && styles.badgeTextActive]}>
+                      {f.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
 
-        {filteredOrders.length === 0 ? (
-          <EmptyState />
-        ) : (
+          {/* Order List */}
           <FlatList
             data={filteredOrders}
+            keyExtractor={item => item.id}
             renderItem={renderOrder}
-            keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconWrap}>
+                  <Text style={styles.emptyIcon}>📝</Text>
+                </View>
+                <Text style={styles.emptyTitle}>Chưa có hoá đơn nào</Text>
+                <Text style={styles.emptySub}>
+                  {searchText ? `Không tìm thấy "${searchText}"` : 'Các đơn hàng sẽ xuất hiện tại đây'}
+                </Text>
+              </View>
+            }
           />
-        )}
-      </SafeAreaView>
+        </SafeAreaView>
       </View>
     </AnimatedScreen>
   );
 }
 
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  gradient: { position: 'absolute', left: 0, right: 0, top: 0, height: 300 },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  gradient: { position: 'absolute', left: 0, right: 0, top: 0, height: 350 },
   safeArea: { flex: 1 },
 
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.text },
-  calendarBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  calendarIcon: { fontSize: 20 },
-
-  summaryCard: {
-    flexDirection: 'row',
-    backgroundColor: Colors.white,
-    marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 0,
-    ...Shadows.card,
-  },
-  summaryItem: { flex: 1, alignItems: 'center' },
-  summaryLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
-  summaryValue: { fontSize: 20, fontWeight: '700', color: Colors.text },
-  summaryDivider: { width: 1, backgroundColor: Colors.borderLight, marginHorizontal: 12 },
-
-  searchWrap: { paddingHorizontal: 20, marginBottom: 12 },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  searchIcon: { fontSize: 16, marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.text },
-  clearSearch: { fontSize: 16, color: Colors.textMuted, padding: 4 },
+  title: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, color: '#64748B', fontWeight: '500', marginTop: 2 },
 
-  filterTabs: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 16, gap: 8 },
-  filterTab: {
+  filterSection: { paddingHorizontal: 16, marginBottom: 8 },
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  filterTabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  filterTabText: { fontSize: 13, fontWeight: '500', color: Colors.textSecondary, marginRight: 6 },
-  filterTabTextActive: { color: Colors.white, fontWeight: '600' },
-  filterCount: { backgroundColor: Colors.inputBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  filterCountActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  filterCountText: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
-  filterCountTextActive: { color: Colors.white },
-
-  listContent: { paddingHorizontal: 20, paddingBottom: 120 },
-
-  orderCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
+    height: 48,
     marginBottom: 12,
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    ...Shadows.md,
+  },
+  searchIcon: { fontSize: 15, marginRight: 8, opacity: 0.6 },
+  searchInput: { flex: 1, fontSize: 15, color: '#1E293B', height: '100%' },
+  clearIcon: { fontSize: 14, color: '#94A3B8', padding: 4 },
+
+  filterRow: { gap: 8, paddingBottom: 4 },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    gap: 6,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    ...Shadows.primary,
+  },
+  filterText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  filterTextActive: { color: '#FFF' },
+  badge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  badgeActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  badgeText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  badgeTextActive: { color: '#FFF' },
+
+  listContent: { padding: 16, paddingBottom: 110 },
+
+  // Order Card — Premium
+  orderCard: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 20,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     ...Shadows.card,
   },
-  orderHeader: {
+  accentBar: {
+    width: 4,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+  },
+  cardContent: { flex: 1, padding: 16 },
+
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 10,
   },
-  orderHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-  orderNumber: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  cardHeaderLeft: { flex: 1, marginRight: 8 },
+  billName: { fontSize: 17, fontWeight: '800', color: '#0F172A', marginBottom: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  orderTime: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  tableBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
-  orderNumberPaid: { backgroundColor: Colors.greenBg },
-  orderNumberPending: { backgroundColor: Colors.orangeBg },
-  orderNumberText: { fontSize: 12, fontWeight: '700' },
-  orderCustomer: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  orderTime: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  tableBadgeText: { fontSize: 11, fontWeight: '700', color: '#0369A1' },
+
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12,
   },
-  statusPaid: { backgroundColor: Colors.greenBg },
-  statusPending: { backgroundColor: Colors.orangeBg },
-  statusIcon: { fontSize: 12, marginRight: 4 },
-  statusText: { fontSize: 11, fontWeight: '600' },
-  statusTextPaid: { color: Colors.green },
-  statusTextPending: { color: Colors.orange },
+  statusPaid: { backgroundColor: '#DCFCE7' },
+  statusPending: { backgroundColor: '#FEF3C7' },
+  statusText: { fontSize: 11, fontWeight: '800' },
+  statusTextPaid: { color: '#16A34A' },
+  statusTextPending: { color: '#D97706' },
 
-  orderItems: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: Colors.borderLight },
-  orderItemRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  orderItemName: { fontSize: 14, color: Colors.text },
-  orderItemQty: { color: Colors.textMuted },
-  orderItemPrice: { fontSize: 14, color: Colors.textSecondary },
-  moreItems: { fontSize: 12, color: Colors.textMuted, fontStyle: 'italic' },
+  itemsSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    gap: 4,
+  },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  itemQty: { fontSize: 12, fontWeight: '700', color: Colors.primary, minWidth: 22 },
+  itemName: { flex: 1, fontSize: 13, color: '#334155', fontWeight: '500' },
+  itemPrice: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  moreItems: { fontSize: 11, color: '#94A3B8', fontStyle: 'italic', marginTop: 2 },
 
-  orderFooter: {
+  cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
   },
-  totalLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 2 },
-  totalAmount: { fontSize: 20, fontWeight: '700' },
-  markPaidBtn: { borderRadius: 20, overflow: 'hidden' },
-  markPaidGradient: { paddingHorizontal: 16, paddingVertical: 10 },
-  markPaidText: { fontSize: 13, fontWeight: '600', color: Colors.white },
+  totalLabel: { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
+  totalAmount: { fontSize: 20, fontWeight: '800' },
 
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
-  emptyIconWrap: { marginBottom: 20 },
-  emptyIconGradient: { width: 88, height: 88, borderRadius: 44, justifyContent: 'center', alignItems: 'center' },
-  emptyIcon: { fontSize: 40 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.text, marginBottom: 8 },
-  emptyDesc: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
-  emptyBtn: { borderRadius: 24, overflow: 'hidden' },
-  emptyBtnGradient: { paddingHorizontal: 24, paddingVertical: 14 },
-  emptyBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600' },
-  subTitle: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  emptyState: { alignItems: 'center', paddingTop: 80 },
+  emptyIconWrap: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
+    ...Shadows.md,
+  },
+  emptyIcon: { fontSize: 32 },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#1E293B', marginBottom: 8 },
+  emptySub: { fontSize: 14, color: '#94A3B8', textAlign: 'center' },
 });

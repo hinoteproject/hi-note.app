@@ -39,11 +39,13 @@ interface StoreState {
   orders: Order[];
   currentOrder: OrderItem[];
   currentTable: string;
+  currentBillName: string;
   addToCurrentOrder: (item: OrderItem) => void;
   updateCurrentOrderItem: (index: number, updates: Partial<OrderItem>) => void;
   removeFromCurrentOrder: (index: number) => void;
   clearCurrentOrder: () => void;
   setCurrentTable: (table: string) => void;
+  setCurrentBillName: (name: string) => void;
   createOrder: (paymentMethod: Order['paymentMethod']) => Promise<Order>;
   updateOrderPayment: (orderId: string, status: Order['paymentStatus']) => Promise<void>;
   loadOrders: () => Promise<void>;
@@ -83,6 +85,10 @@ interface StoreState {
   isLoading: boolean;
   setLoading: (loading: boolean) => void;
 
+  // Settings
+  useMenuMatching: boolean;
+  setUseMenuMatching: (value: boolean) => void;
+
   // Stats
   getTodayRevenue: () => number;
   setCurrentOrder: (items: OrderItem[], table?: string) => void;
@@ -109,6 +115,10 @@ export const useStore = create<StoreState>()((set, get) => ({
   // Loading
   isLoading: false,
   setLoading: (loading) => set({ isLoading: loading }),
+
+  // Settings
+  useMenuMatching: true, // Mặc định bật
+  setUseMenuMatching: (value) => set({ useMenuMatching: value }),
 
   // User
   user: null,
@@ -159,7 +169,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   // Products
   products: [],
   setProducts: (products) => set({ products }),
-  
+
   loadProducts: async () => {
     if (isFirebaseConfigured) {
       const products = await getProductsFromFirebase();
@@ -193,7 +203,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       await updateProductInFirebase(id, updates);
     }
     set((state) => ({
-      products: state.products.map(p => 
+      products: state.products.map(p =>
         p.id === id ? { ...p, ...updates } : p
       )
     }));
@@ -211,7 +221,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   findProductByName: (name) => {
     const { products } = get();
     const lowerName = name.toLowerCase();
-    return products.find(p => 
+    return products.find(p =>
       p.name.toLowerCase() === lowerName ||
       p.aliases.some(a => a.toLowerCase() === lowerName)
     );
@@ -221,6 +231,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   orders: [],
   currentOrder: [],
   currentTable: '',
+  currentBillName: '',
   setOrders: (orders) => set({ orders }),
 
   loadOrders: async () => {
@@ -237,7 +248,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     if (existingIndex >= 0) {
       const updated = [...state.currentOrder];
       updated[existingIndex].quantity += item.quantity;
-      updated[existingIndex].subtotal = 
+      updated[existingIndex].subtotal =
         updated[existingIndex].quantity * updated[existingIndex].unitPrice;
       return { currentOrder: updated };
     }
@@ -247,7 +258,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   updateCurrentOrderItem: (index, updates) => set((state) => {
     const updated = [...state.currentOrder];
     updated[index] = { ...updated[index], ...updates };
-    if (updates.quantity || updates.unitPrice) {
+    if (updates.quantity !== undefined || updates.unitPrice !== undefined) {
       updated[index].subtotal = updated[index].quantity * updated[index].unitPrice;
     }
     return { currentOrder: updated };
@@ -257,16 +268,30 @@ export const useStore = create<StoreState>()((set, get) => ({
     currentOrder: state.currentOrder.filter((_, i) => i !== index)
   })),
 
-  clearCurrentOrder: () => set({ currentOrder: [], currentTable: '' }),
+  clearCurrentOrder: () => set({ currentOrder: [], currentTable: '', currentBillName: '' }),
 
   setCurrentTable: (table) => set({ currentTable: table }),
+  setCurrentBillName: (name) => set({ currentBillName: name }),
 
   createOrder: async (paymentMethod) => {
-    const { currentOrder, currentTable, orders } = get();
+    const { currentOrder, currentTable, currentBillName, orders } = get();
+
+    // Auto-generate bill name nếu không nhập
+    const generateDefaultBillName = () => {
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+      const todayOrders = orders.filter(o => {
+        const d = new Date(o.createdAt);
+        return d.toDateString() === today.toDateString();
+      });
+      return `Đơn ${todayOrders.length + 1} ngày ${dateStr}`;
+    };
+
     const orderData = {
       items: currentOrder,
       totalAmount: currentOrder.reduce((sum, item) => sum + item.subtotal, 0),
       tableNumber: currentTable || undefined,
+      billName: currentBillName.trim() || generateDefaultBillName(),
       paymentMethod,
       paymentStatus: paymentMethod === 'cash' ? 'paid' as const : 'pending' as const,
       createdAt: new Date(),
@@ -274,7 +299,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     };
 
     let order: Order;
-    
+
     if (isFirebaseConfigured) {
       const id = await addOrderToFirebase(orderData);
       order = { ...orderData, id };
@@ -282,27 +307,47 @@ export const useStore = create<StoreState>()((set, get) => ({
       order = { ...orderData, id: generateId() };
     }
 
-    set({ orders: [order, ...orders], currentOrder: [], currentTable: '' });
+    set({ orders: [order, ...orders], currentOrder: [], currentTable: '', currentBillName: '' });
+
+    // Bug #13: Auto-update customer stats when creating an order
+    const { customers } = get();
+    const billName = orderData.billName || '';
+    const matchedCustomer = customers.find(c =>
+      c.name.toLowerCase() === billName.toLowerCase()
+    );
+    if (matchedCustomer) {
+      const updatedCustomers = customers.map(c =>
+        c.id === matchedCustomer.id
+          ? {
+            ...c,
+            totalSpent: (c.totalSpent || 0) + orderData.totalAmount,
+            totalOrders: (c.totalOrders || 0) + 1,
+          }
+          : c
+      );
+      set({ customers: updatedCustomers });
+    }
+
     return order;
   },
 
   updateOrderPayment: async (orderId, status) => {
-    const updates = { 
-      paymentStatus: status, 
-      paidAt: status === 'paid' ? new Date() : undefined 
+    const updates = {
+      paymentStatus: status,
+      paidAt: status === 'paid' ? new Date() : undefined
     };
-    
+
     if (isFirebaseConfigured) {
       await updateOrderInFirebase(orderId, updates);
     }
-    
+
     set((state) => ({
-      orders: state.orders.map(o => 
+      orders: state.orders.map(o =>
         o.id === orderId ? { ...o, ...updates } : o
       )
     }));
   },
- 
+
   setCurrentOrder: (items, table) => {
     set({ currentOrder: items, currentTable: table || '' });
   },
@@ -331,7 +376,7 @@ export const useStore = create<StoreState>()((set, get) => ({
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             await AsyncStorage.setItem('hi_note_user', JSON.stringify(remote));
-          } catch {}
+          } catch { }
           return true;
         }
         return false;
@@ -377,7 +422,7 @@ export const useStore = create<StoreState>()((set, get) => ({
           try {
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             await AsyncStorage.setItem('hi_note_user', JSON.stringify(remote));
-          } catch {}
+          } catch { }
           return true;
         }
         return false;
@@ -430,14 +475,14 @@ export const useStore = create<StoreState>()((set, get) => ({
 
   setDefaultBank: async (id) => {
     const { bankAccounts } = get();
-    
+
     if (isFirebaseConfigured) {
       // Update all banks
       for (const bank of bankAccounts) {
         await updateBankInFirebase(bank.id, { isDefault: bank.id === id });
       }
     }
-    
+
     set((state) => ({
       bankAccounts: state.bankAccounts.map(b => ({
         ...b,

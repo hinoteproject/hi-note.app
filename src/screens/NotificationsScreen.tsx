@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +13,7 @@ import AnimatedScreen from '../components/AnimatedScreen';
 import { Colors, Shadows } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { AppNotification } from '../types';
+import { requestNotificationPermissions } from '../services/notificationService';
 
 const ICONS: Record<string, string> = {
   order: '🛒',
@@ -23,6 +25,12 @@ const ICONS: Record<string, string> = {
 export function NotificationsScreen() {
   const { notifications, markNotificationRead, markAllNotificationsRead } = useStore();
   const unreadCount = notifications.filter(n => !n.read).length;
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  useEffect(() => {
+    // Request notification permissions when screen opens
+    requestNotificationPermissions();
+  }, []);
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -68,6 +76,25 @@ export function NotificationsScreen() {
             )}
           </View>
 
+          {/* Notification Settings */}
+          <View style={styles.settingsCard}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingIcon}>🔔</Text>
+                <View>
+                  <Text style={styles.settingTitle}>Thông báo "Ting Ting"</Text>
+                  <Text style={styles.settingDesc}>Phát âm thanh khi có tiền về</Text>
+                </View>
+              </View>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={setNotificationsEnabled}
+                trackColor={{ false: '#E2E8F0', true: Colors.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+          </View>
+
           {notifications.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>🔔</Text>
@@ -97,6 +124,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 28, fontWeight: '800', color: Colors.text },
   markAllBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: Colors.primaryBg, borderRadius: 12 },
   markAllText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  settingsCard: { backgroundColor: '#fff', marginHorizontal: 20, borderRadius: 16, padding: 16, marginBottom: 16, ...Shadows.card },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  settingIcon: { fontSize: 24, marginRight: 12 },
+  settingTitle: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  settingDesc: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
   listContent: { paddingHorizontal: 20, paddingBottom: 100 },
   card: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, ...Shadows.card },
   cardUnread: { backgroundColor: '#F0F9FF' },

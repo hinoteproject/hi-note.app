@@ -29,6 +29,7 @@ export interface Order {
   items: OrderItem[];
   totalAmount: number;
   tableNumber?: string;
+  billName?: string; // Tên bill/tên khách hàng
   customerId?: string; // Liên kết khách hàng
   note?: string;
   paymentMethod: 'cash' | 'transfer' | 'pending';
