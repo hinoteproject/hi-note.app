@@ -45,6 +45,13 @@ export function SellScreen() {
   const [pendingItems, setPendingItems] = useState<OrderItem[]>([]);
   const [pendingTable, setPendingTable] = useState<string>('');
 
+  // Voice Text Edit modal — hiện raw text cho user sửa trước khi AI parse
+  const [voiceTextEditVisible, setVoiceTextEditVisible] = useState(false);
+  const [pendingVoiceText, setPendingVoiceText] = useState('');
+
+  // Product Grid modal
+  const [productGridVisible, setProductGridVisible] = useState(false);
+
   const {
     products,
     currentOrder,
@@ -164,6 +171,17 @@ export function SellScreen() {
     }
   };
 
+  // Khi user bấm "Gửi" trong Voice Text Edit modal
+  const handleVoiceTextConfirm = async () => {
+    setVoiceTextEditVisible(false);
+    const text = pendingVoiceText.trim();
+    if (text) {
+      setInputText(text);
+      await processInput(text);
+    }
+    setPendingVoiceText('');
+  };
+
   const handleMicPress = async () => {
     if (isRecording) {
       // Stop recording
@@ -171,42 +189,28 @@ export function SellScreen() {
         setIsProcessing(true);
         const transcribedText = await stopRecording();
         setIsRecording(false);
+        setIsProcessing(false);
 
         if (transcribedText) {
-          // special fallback marker from recorder: returns AUDIO_URI::uri when transcription failed
-          if (transcribedText.startsWith && transcribedText.startsWith('AUDIO_URI::')) {
+          // FIX: was `transcribedText.startsWith &&` (always truthy — bug!)
+          if (transcribedText.startsWith('AUDIO_URI::')) {
             const audioUri = transcribedText.replace('AUDIO_URI::', '');
-            Alert.alert('Ghi âm đã lưu', 'Không thể chuyển giọng nói thành văn bản. Bạn muốn phát lại hay thử lại chuyển giọng?', [
+            Alert.alert('Ghi âm đã lưu', 'Không thể nhận diện giọng nói. Bạn muốn thử lại?', [
               { text: 'Huỷ', style: 'cancel' },
-              {
-                text: 'Phát lại',
-                onPress: async () => {
-                  try {
-                    const { Audio } = await import('expo-av');
-                    const sound = new Audio.Sound();
-                    await sound.loadAsync({ uri: audioUri } as any);
-                    await sound.playAsync();
-                  } catch (e) {
-                    console.error('Play audio failed', e);
-                    Alert.alert('Lỗi', 'Không thể phát file ghi âm.');
-                  }
-                },
-              },
               {
                 text: 'Thử lại',
                 onPress: async () => {
-                  // try transcription again
                   try {
                     setIsProcessing(true);
                     const retryText = await retryTranscribe(audioUri);
                     if (retryText) {
-                      setInputText(retryText);
-                      await processInput(retryText);
+                      // Hiện text edit modal thay vì parse thẳng
+                      setPendingVoiceText(retryText);
+                      setVoiceTextEditVisible(true);
                     } else {
                       Alert.alert('Không có văn bản', 'Không nhận diện được tiếng nói.');
                     }
                   } catch (e) {
-                    console.error('Retry transcription failed', e);
                     Alert.alert('Lỗi', 'Thử lại thất bại.');
                   } finally {
                     setIsProcessing(false);
@@ -215,17 +219,17 @@ export function SellScreen() {
               },
             ]);
           } else {
-            setInputText(transcribedText);
-            // Auto process
-            await processInput(transcribedText);
+            // ✅ Hiện modal để user xem và sửa text trước khi AI parse
+            setPendingVoiceText(transcribedText);
+            setVoiceTextEditVisible(true);
           }
         }
       } catch (error: any) {
         console.error('Stop recording error:', error);
         Alert.alert('Lỗi', error.message || 'Không thể xử lý giọng nói');
         setIsRecording(false);
+        setIsProcessing(false);
       }
-      setIsProcessing(false);
     } else {
       // Start recording
       try {
@@ -554,8 +558,8 @@ export function SellScreen() {
               style={styles.bottomBarWrapper}
             >
               <View style={styles.bottomBar}>
-                {/* Grid Button */}
-                <TouchableOpacity style={styles.bottomBtn}>
+                {/* Grid Button — mở thư viện sản phẩm */}
+                <TouchableOpacity style={styles.bottomBtn} onPress={() => setProductGridVisible(true)}>
                   <View style={styles.gridIconWrap}>
                     <View style={styles.gridRow}>
                       <View style={styles.gridDot} />
@@ -659,8 +663,9 @@ export function SellScreen() {
                     onPress={() => stopRecording().then((text) => {
                       setIsRecording(false);
                       if (text && !text.startsWith('AUDIO_URI::')) {
-                        setInputText(text);
-                        processInput(text);
+                        // Hiện text edit modal thay vì parse trực tiếp
+                        setPendingVoiceText(text);
+                        setVoiceTextEditVisible(true);
                       }
                     })}
                   >
@@ -843,6 +848,122 @@ export function SellScreen() {
                 <Text style={styles.modalSaveText}>Lưu</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Voice Text Edit Modal ─────────────────────────────────────────── */}
+      <Modal
+        visible={voiceTextEditVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setVoiceTextEditVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.voiceEditSheet}>
+            {/* Handle */}
+            <View style={styles.sheetHandle} />
+
+            <Text style={styles.voiceEditTitle}>🎤 Kiểm tra nội dung</Text>
+            <Text style={styles.voiceEditHint}>
+              Sửa lại nếu AI nghe nhầm, rồi bấm <Text style={{ fontWeight: '800', color: '#3B82F6' }}>Phân tích</Text>
+            </Text>
+
+            <TextInput
+              style={styles.voiceEditInput}
+              value={pendingVoiceText}
+              onChangeText={setPendingVoiceText}
+              multiline
+              autoFocus
+              placeholder="VD: 2 bánh poca 10k, 1 nước ngọt 15k"
+              placeholderTextColor="#94A3B8"
+            />
+
+            {/* Tip */}
+            <View style={styles.voiceEditTipRow}>
+              <Text style={styles.voiceEditTip}>💡 Mẹo: "2 bánh poca 10k, 3 bò húc 15k, bàn 5"</Text>
+            </View>
+
+            <View style={styles.voiceEditActions}>
+              <TouchableOpacity
+                style={styles.voiceEditCancelBtn}
+                onPress={() => { setVoiceTextEditVisible(false); setPendingVoiceText(''); }}
+              >
+                <Text style={styles.voiceEditCancelText}>Huỷ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.voiceEditConfirmBtn, !pendingVoiceText.trim() && { opacity: 0.5 }]}
+                onPress={handleVoiceTextConfirm}
+                disabled={!pendingVoiceText.trim() || isProcessing}
+              >
+                <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.voiceEditGradient}>
+                  {isProcessing
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.voiceEditConfirmText}>🤖 Phân tích đơn hàng</Text>
+                  }
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Product Quick-Pick Grid ──────────────────────────────────────────  */}
+      <Modal
+        visible={productGridVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setProductGridVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.productGridSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.productGridHeader}>
+              <Text style={styles.productGridTitle}>📦 Thư viện sản phẩm</Text>
+              <TouchableOpacity onPress={() => setProductGridVisible(false)} style={styles.confirmCloseBtn}>
+                <Text style={styles.confirmCloseIcon}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {products.length === 0 ? (
+              <View style={styles.productGridEmpty}>
+                <Text style={styles.productGridEmptyIcon}>📭</Text>
+                <Text style={styles.productGridEmptyText}>Chưa có sản phẩm nào</Text>
+                <Text style={styles.productGridEmptySub}>Thêm sản phẩm qua mục "Sản phẩm" trong tab Nhiều hơn</Text>
+              </View>
+            ) : (
+              <ScrollView
+                contentContainerStyle={styles.productGridList}
+                showsVerticalScrollIndicator={false}
+              >
+                {products.map((product) => (
+                  <TouchableOpacity
+                    key={product.id}
+                    style={styles.productGridItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const newItem: OrderItem = {
+                        productId: product.id,
+                        productName: product.name,
+                        quantity: 1,
+                        unitPrice: product.price,
+                        subtotal: product.price,
+                      };
+                      addToCurrentOrder(newItem);
+                      setProductGridVisible(false);
+                    }}
+                  >
+                    <View style={styles.productGridItemInner}>
+                      <Text style={styles.productGridItemName} numberOfLines={2}>{product.name}</Text>
+                      <Text style={styles.productGridItemPrice}>{formatMoney(product.price)}đ</Text>
+                    </View>
+                    <View style={styles.productGridAddBtn}>
+                      <Text style={styles.productGridAddIcon}>+</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -1598,5 +1719,176 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+
+  // ─── Voice Text Edit Modal ───────────────────────
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  voiceEditSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  voiceEditTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 6,
+  },
+  voiceEditHint: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  voiceEditInput: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 16,
+    color: '#1E293B',
+    minHeight: 100,
+    borderWidth: 2,
+    borderColor: '#3B82F6',
+    textAlignVertical: 'top',
+    marginBottom: 12,
+  },
+  voiceEditTipRow: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+  },
+  voiceEditTip: {
+    fontSize: 12,
+    color: '#3B82F6',
+    fontWeight: '500',
+  },
+  voiceEditActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  voiceEditCancelBtn: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceEditCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  voiceEditConfirmBtn: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  voiceEditGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceEditConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // ─── Product Grid Modal ─────────────────────────
+  productGridSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingTop: 12,
+    paddingBottom: 40,
+    maxHeight: '85%',
+  },
+  productGridHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+  },
+  productGridTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  productGridList: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    gap: 10,
+  },
+  productGridItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  productGridItemInner: {
+    flex: 1,
+    marginRight: 12,
+  },
+  productGridItemName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 4,
+  },
+  productGridItemPrice: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  productGridAddBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productGridAddIcon: {
+    fontSize: 20,
+    color: '#fff',
+    fontWeight: '700',
+    marginTop: -2,
+  },
+  productGridEmpty: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  productGridEmptyIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  productGridEmptyText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 6,
+  },
+  productGridEmptySub: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
   },
 });
