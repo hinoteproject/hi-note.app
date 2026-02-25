@@ -1,5 +1,6 @@
 import { Product, AIParseResult } from '../types';
 import { GROQ_API_KEY } from '../config/keys';
+import { retrieveRelevantProducts, shouldUseFullList } from './rag';
 
 // Groq API key
 const GROQ_KEY = GROQ_API_KEY;
@@ -14,14 +15,26 @@ export async function parseVoiceToOrder(
   existingProducts: Product[],
   options: ParseOptions = { useMenuMatching: true }
 ): Promise<AIParseResult> {
-  console.log('🤖 Parsing with Groq AI:', voiceText, 'useMenuMatching:', options.useMenuMatching);
+  console.log('🤖 Parsing with Groq AI + RAG:', voiceText);
 
-  const productList = options.useMenuMatching ? existingProducts.map(p => ({
+  // ── RAG: Chỉ lấy sản phẩm liên quan thay vì gửi toàn bộ menu ──────────
+  let relevantProducts: Product[] = [];
+  if (options.useMenuMatching && existingProducts.length > 0) {
+    if (shouldUseFullList(voiceText)) {
+      // Query quá ngắn/không rõ → gửi toàn bộ (tối đa 15 sp)
+      relevantProducts = existingProducts.slice(0, 15);
+    } else {
+      // RAG retrieval — chỉ lấy sản phẩm thực sự liên quan
+      relevantProducts = retrieveRelevantProducts(voiceText, existingProducts, 8);
+    }
+  }
+
+  const productList = relevantProducts.map(p => ({
     id: p.id,
     name: p.name,
     aliases: p.aliases,
     price: p.price,
-  })) : [];
+  }));
 
   const menuSection = options.useMenuMatching && productList.length > 0
     ? `
@@ -114,7 +127,8 @@ TRẢ VỀ JSON THUẦN (không markdown):
     throw new Error('Invalid JSON');
   } catch (error) {
     console.error('AI Parse Error:', error);
-    return simpleParser(voiceText, existingProducts);
+    // Fallback: dùng RAG-filtered products cho simpleParser cũng
+    return simpleParser(voiceText, relevantProducts.length > 0 ? relevantProducts : existingProducts);
   }
 }
 
