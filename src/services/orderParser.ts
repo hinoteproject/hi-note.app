@@ -68,13 +68,18 @@ LƯU Ý TIẾNG VIỆT:
 - "nghìn", "ngàn", "k" = 1000 (VD: "35k" = 35000)
 - "bài" có thể là "bàn" do nhận dạng giọng nói
 
-TRẢ VỀ JSON THUẦN (không markdown):
+TRẢ VỀ JSON THUẦN (không markdown, không code block):
 {
   "items": [{"name": "Tên SP", "quantity": 1, "matchedProductId": null, "price": 35000}],
   "table": "2",
   "note": null,
   "newProducts": ["Tên SP mới"]
-}`;
+}
+
+QUAN TRỌNG VỀ FORMAT:
+- price PHẢI LÀ SỐ NGUYÊN KHÔNG DẤU: 35000 ✓, KHÔNG phải "35.000" hay "35,000" hay "35*000" hay "35-000" ✗
+- Không dùng markdown (**, *, _) trong JSON
+- Không bao JSON trong code block (\`\`\`json)`;
 
   try {
     const response = await fetch(GROQ_URL, {
@@ -84,7 +89,7 @@ TRẢ VỀ JSON THUẦN (không markdown):
         'Authorization': `Bearer ${GROQ_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: voiceText }
@@ -110,13 +115,19 @@ TRẢ VỀ JSON THUẦN (không markdown):
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
-        // Clean up common JSON issues from LLM
+        // ─── Clean up JSON từ LLM ───────────────────────────────────────────
         let jsonStr = jsonMatch[0]
-          .replace(/,\s*]/g, ']')           // Remove trailing commas in arrays
-          .replace(/,\s*}/g, '}')           // Remove trailing commas in objects
-          .replace(/(\d)-(\d{3})\b/g, '$1$2') // "15-000" → "15000" (VN number format)
-          .replace(/(\d)\.(\d{3})\b(?!\d)/g, '$1$2') // "15.000" → "15000"
-          .replace(/(\d),(\d{3})\b(?!\d)/g, '$1$2'); // "15,000" → "15000"
+          // Format số kiểu VN mà AI hay dùng: 20*000, 20.000, 20-000, 20,000
+          .replace(/(\d)[*×x](\d{3})\b/g, '$1$2')        // 20*000 → 20000
+          .replace(/(\d)-(\d{3})\b/g, '$1$2')             // 20-000 → 20000
+          .replace(/(\d)\.(\d{3})\b(?!\d)/g, '$1$2')      // 20.000 → 20000
+          .replace(/(\d),(\d{3})\b(?!\d)/g, '$1$2')       // 20,000 → 20000
+          // Xóa markdown formatting lọt vào JSON
+          .replace(/\*\*([^*]+)\*\*/g, '$1')              // **text** → text
+          .replace(/\*([^*]+)\*/g, '$1')                  // *text* → text
+          // Trailing commas
+          .replace(/,\s*]/g, ']')
+          .replace(/,\s*}/g, '}');
 
         const result = JSON.parse(jsonStr) as AIParseResult;
         console.log('✅ Groq parsed:', result);
