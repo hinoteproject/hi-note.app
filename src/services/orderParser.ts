@@ -112,8 +112,11 @@ TRẢ VỀ JSON THUẦN (không markdown):
       try {
         // Clean up common JSON issues from LLM
         let jsonStr = jsonMatch[0]
-          .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
-          .replace(/,\s*}/g, '}'); // Remove trailing commas in objects
+          .replace(/,\s*]/g, ']')           // Remove trailing commas in arrays
+          .replace(/,\s*}/g, '}')           // Remove trailing commas in objects
+          .replace(/(\d)-(\d{3})\b/g, '$1$2') // "15-000" → "15000" (VN number format)
+          .replace(/(\d)\.(\d{3})\b(?!\d)/g, '$1$2') // "15.000" → "15000"
+          .replace(/(\d),(\d{3})\b(?!\d)/g, '$1$2'); // "15,000" → "15000"
 
         const result = JSON.parse(jsonStr) as AIParseResult;
         console.log('✅ Groq parsed:', result);
@@ -157,7 +160,12 @@ function simpleParser(text: string, products: Product[]): AIParseResult {
 
   while ((match = itemRegex.exec(text)) !== null) {
     const quantity = match[1] ? parseInt(match[1]) : 1;
-    const name = match[2].trim();
+    // Xóa số và đơn vị đếm dính vào đầu tên (VD: "2 chai nước ngọt" → "nước ngọt")
+    let name = match[2]
+      .trim()
+      .replace(/^\d+\s+/, '')                                        // xóa số đầu: "2 "
+      .replace(/^(tô|ly|cái|phần|suất|bịch|lon|chai|gói|hộp|túi)\s+/i, '') // xóa đơn vị đầu
+      .trim();
     let price = parseInt(match[3]) * 1000;
 
     if (name.length > 0) {

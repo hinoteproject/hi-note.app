@@ -1,10 +1,10 @@
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDocs, 
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -27,7 +27,7 @@ const STOCK_IMPORTS_COL = 'stockImports';
 // ==================== PRODUCTS ====================
 export async function addProductToFirebase(product: Omit<Product, 'id' | 'createdAt'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   const docRef = await addDoc(collection(db, PRODUCTS_COL), {
     ...product,
     createdAt: Timestamp.now(),
@@ -37,22 +37,22 @@ export async function addProductToFirebase(product: Omit<Product, 'id' | 'create
 
 export async function updateProductInFirebase(id: string, updates: Partial<Product>): Promise<void> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   await updateDoc(doc(db, PRODUCTS_COL, id), updates);
 }
 
 export async function deleteProductFromFirebase(id: string): Promise<void> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   await deleteDoc(doc(db, PRODUCTS_COL, id));
 }
 
 export async function getProductsFromFirebase(): Promise<Product[]> {
   if (!isFirebaseConfigured || !db) return [];
-  
+
   const q = query(collection(db, PRODUCTS_COL), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  
+
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
@@ -61,10 +61,10 @@ export async function getProductsFromFirebase(): Promise<Product[]> {
 }
 
 export function subscribeToProducts(callback: (products: Product[]) => void): () => void {
-  if (!isFirebaseConfigured || !db) return () => {};
-  
+  if (!isFirebaseConfigured || !db) return () => { };
+
   const q = query(collection(db, PRODUCTS_COL), orderBy('createdAt', 'desc'));
-  
+
   return onSnapshot(q, (snapshot) => {
     const products = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -78,32 +78,42 @@ export function subscribeToProducts(callback: (products: Product[]) => void): ()
 // ==================== ORDERS ====================
 export async function addOrderToFirebase(order: Omit<Order, 'id'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
-  const docRef = await addDoc(collection(db, ORDERS_COL), {
-    ...order,
+
+  // Lọc bỏ undefined — Firestore không chấp nhận undefined
+  const data: Record<string, any> = {
+    items: order.items,
+    totalAmount: order.totalAmount,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    billName: order.billName || '',
     createdAt: Timestamp.now(),
     paidAt: order.paidAt ? Timestamp.fromDate(new Date(order.paidAt)) : null,
-  });
+  };
+  if (order.tableNumber) data.tableNumber = order.tableNumber;
+  if (order.customerId) data.customerId = order.customerId;
+  if (order.note) data.note = order.note;
+
+  const docRef = await addDoc(collection(db, ORDERS_COL), data);
   return docRef.id;
 }
 
 export async function updateOrderInFirebase(id: string, updates: Partial<Order>): Promise<void> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   const updateData: any = { ...updates };
   if (updates.paidAt) {
     updateData.paidAt = Timestamp.fromDate(new Date(updates.paidAt));
   }
-  
+
   await updateDoc(doc(db, ORDERS_COL, id), updateData);
 }
 
 export async function getOrdersFromFirebase(): Promise<Order[]> {
   if (!isFirebaseConfigured || !db) return [];
-  
+
   const q = query(collection(db, ORDERS_COL), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  
+
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
@@ -113,10 +123,10 @@ export async function getOrdersFromFirebase(): Promise<Order[]> {
 }
 
 export function subscribeToOrders(callback: (orders: Order[]) => void): () => void {
-  if (!isFirebaseConfigured || !db) return () => {};
-  
+  if (!isFirebaseConfigured || !db) return () => { };
+
   const q = query(collection(db, ORDERS_COL), orderBy('createdAt', 'desc'));
-  
+
   return onSnapshot(q, (snapshot) => {
     const orders = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -136,22 +146,22 @@ export async function deleteOrderFromFirebase(id: string): Promise<void> {
 // ==================== BANK ACCOUNTS ====================
 export async function addBankToFirebase(bank: Omit<BankAccount, 'id'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   const docRef = await addDoc(collection(db, BANKS_COL), bank);
   return docRef.id;
 }
 
 export async function updateBankInFirebase(id: string, updates: Partial<BankAccount>): Promise<void> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   await updateDoc(doc(db, BANKS_COL, id), updates);
 }
 
 export async function getBanksFromFirebase(): Promise<BankAccount[]> {
   if (!isFirebaseConfigured || !db) return [];
-  
+
   const snapshot = await getDocs(collection(db, BANKS_COL));
-  
+
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
@@ -159,8 +169,8 @@ export async function getBanksFromFirebase(): Promise<BankAccount[]> {
 }
 
 export function subscribeToBanks(callback: (banks: BankAccount[]) => void): () => void {
-  if (!isFirebaseConfigured || !db) return () => {};
-  
+  if (!isFirebaseConfigured || !db) return () => { };
+
   return onSnapshot(collection(db, BANKS_COL), (snapshot) => {
     const banks = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -181,7 +191,7 @@ export interface Expense {
 
 export async function addExpenseToFirebase(expense: Omit<Expense, 'id'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   const docRef = await addDoc(collection(db, EXPENSES_COL), {
     ...expense,
     createdAt: Timestamp.now(),
@@ -191,10 +201,10 @@ export async function addExpenseToFirebase(expense: Omit<Expense, 'id'>): Promis
 
 export async function getExpensesFromFirebase(): Promise<Expense[]> {
   if (!isFirebaseConfigured || !db) return [];
-  
+
   const q = query(collection(db, EXPENSES_COL), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  
+
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
@@ -203,10 +213,10 @@ export async function getExpensesFromFirebase(): Promise<Expense[]> {
 }
 
 export function subscribeToExpenses(callback: (expenses: Expense[]) => void): () => void {
-  if (!isFirebaseConfigured || !db) return () => {};
-  
+  if (!isFirebaseConfigured || !db) return () => { };
+
   const q = query(collection(db, EXPENSES_COL), orderBy('createdAt', 'desc'));
-  
+
   return onSnapshot(q, (snapshot) => {
     const expenses = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -222,7 +232,7 @@ const USERS_COL = 'users';
 
 export async function addUserToFirebase(user: { name: string; phone?: string; email?: string; city?: string; business?: string; createdAt?: Date }): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   // Remove undefined fields - Firebase doesn't accept undefined
   const userData: Record<string, any> = {
     name: user.name,
@@ -237,7 +247,7 @@ export async function addUserToFirebase(user: { name: string; phone?: string; em
   return docRef.id;
 }
 
-export async function getUserByPhoneFromFirebase(phone: string) : Promise<({ id: string } & any) | null> {
+export async function getUserByPhoneFromFirebase(phone: string): Promise<({ id: string } & any) | null> {
   if (!isFirebaseConfigured || !db) return null;
   const q = query(collection(db, USERS_COL), where('phone', '==', phone));
   const snapshot = await getDocs(q);
@@ -250,7 +260,7 @@ export async function getUserByPhoneFromFirebase(phone: string) : Promise<({ id:
   };
 }
 
-export async function getUserByEmailFromFirebase(email: string) : Promise<({ id: string } & any) | null> {
+export async function getUserByEmailFromFirebase(email: string): Promise<({ id: string } & any) | null> {
   if (!isFirebaseConfigured || !db) return null;
   const q = query(collection(db, USERS_COL), where('email', '==', email.toLowerCase()));
   const snapshot = await getDocs(q);
@@ -272,7 +282,7 @@ export async function updateUserInFirebase(id: string, updates: Partial<any>): P
 // ==================== CUSTOMERS ====================
 export async function addCustomerToFirebase(customer: Omit<Customer, 'id' | 'createdAt'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   // Remove undefined fields
   const data: Record<string, any> = {
     name: customer.name,
@@ -292,13 +302,13 @@ export async function addCustomerToFirebase(customer: Omit<Customer, 'id' | 'cre
 
 export async function updateCustomerInFirebase(id: string, updates: Partial<Customer>): Promise<void> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   // Remove undefined fields
   const data: Record<string, any> = {};
   Object.entries(updates).forEach(([key, value]) => {
     if (value !== undefined) data[key] = value;
   });
-  
+
   await updateDoc(doc(db, CUSTOMERS_COL, id), data);
 }
 
@@ -309,10 +319,10 @@ export async function deleteCustomerFromFirebase(id: string): Promise<void> {
 
 export async function getCustomersFromFirebase(): Promise<Customer[]> {
   if (!isFirebaseConfigured || !db) return [];
-  
+
   const q = query(collection(db, CUSTOMERS_COL), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  
+
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
@@ -323,7 +333,7 @@ export async function getCustomersFromFirebase(): Promise<Customer[]> {
 // ==================== STOCK IMPORTS ====================
 export async function addStockImportToFirebase(data: Omit<StockImport, 'id' | 'createdAt'>): Promise<string> {
   if (!isFirebaseConfigured || !db) throw new Error('Firebase chưa được cấu hình');
-  
+
   const importData: Record<string, any> = {
     productId: data.productId,
     productName: data.productName,
@@ -341,10 +351,10 @@ export async function addStockImportToFirebase(data: Omit<StockImport, 'id' | 'c
 
 export async function getStockImportsFromFirebase(): Promise<StockImport[]> {
   if (!isFirebaseConfigured || !db) return [];
-  
+
   const q = query(collection(db, STOCK_IMPORTS_COL), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  
+
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
