@@ -52,6 +52,12 @@ export function SellScreen() {
   // Product Grid modal
   const [productGridVisible, setProductGridVisible] = useState(false);
 
+  // Product Edit modal (trong thư viện sản phẩm)
+  const [productEditVisible, setProductEditVisible] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editingProductName, setEditingProductName] = useState('');
+  const [editingProductPrice, setEditingProductPrice] = useState('');
+
   const {
     products,
     currentOrder,
@@ -66,6 +72,7 @@ export function SellScreen() {
     setCurrentBillName,
     findProductByName,
     addProduct,
+    updateProduct,
   } = useStore();
 
   const total = currentOrder.reduce((sum, item) => sum + item.subtotal, 0);
@@ -859,53 +866,54 @@ export function SellScreen() {
         animationType="slide"
         onRequestClose={() => setVoiceTextEditVisible(false)}
       >
-        <View style={styles.confirmOverlay}>
-          <View style={styles.voiceEditSheet}>
-            {/* Handle */}
-            <View style={styles.sheetHandle} />
-
-            <Text style={styles.voiceEditTitle}>🎤 Kiểm tra nội dung</Text>
-            <Text style={styles.voiceEditHint}>
-              Sửa lại nếu AI nghe nhầm, rồi bấm <Text style={{ fontWeight: '800', color: '#3B82F6' }}>Phân tích</Text>
-            </Text>
-
-            <TextInput
-              style={styles.voiceEditInput}
-              value={pendingVoiceText}
-              onChangeText={setPendingVoiceText}
-              multiline
-              autoFocus
-              placeholder="VD: 2 bánh poca 10k, 1 nước ngọt 15k"
-              placeholderTextColor="#94A3B8"
-            />
-
-            {/* Tip */}
-            <View style={styles.voiceEditTipRow}>
-              <Text style={styles.voiceEditTip}>💡 Mẹo: "2 bánh poca 10k, 3 bò húc 15k, bàn 5"</Text>
-            </View>
-
-            <View style={styles.voiceEditActions}>
-              <TouchableOpacity
-                style={styles.voiceEditCancelBtn}
-                onPress={() => { setVoiceTextEditVisible(false); setPendingVoiceText(''); }}
-              >
-                <Text style={styles.voiceEditCancelText}>Huỷ</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.voiceEditConfirmBtn, !pendingVoiceText.trim() && { opacity: 0.5 }]}
-                onPress={handleVoiceTextConfirm}
-                disabled={!pendingVoiceText.trim() || isProcessing}
-              >
-                <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.voiceEditGradient}>
-                  {isProcessing
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={styles.voiceEditConfirmText}>🤖 Phân tích đơn hàng</Text>
-                  }
-                </LinearGradient>
-              </TouchableOpacity>
+        {/* KeyboardAvoidingView — tự đẩy popup lên khi bàn phím mở */}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.confirmOverlay}>
+            <View style={styles.voiceEditSheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.voiceEditTitle}>🎤 Kiểm tra nội dung</Text>
+              <Text style={styles.voiceEditHint}>
+                Sửa lại nếu AI nghe nhầm, rồi bấm{' '}
+                <Text style={{ fontWeight: '800', color: '#3B82F6' }}>Phân tích</Text>
+              </Text>
+              <TextInput
+                style={styles.voiceEditInput}
+                value={pendingVoiceText}
+                onChangeText={setPendingVoiceText}
+                multiline
+                autoFocus
+                placeholder="VD: 2 bánh poca 10k, 1 nước ngọt 15k"
+                placeholderTextColor="#94A3B8"
+              />
+              <View style={styles.voiceEditTipRow}>
+                <Text style={styles.voiceEditTip}>💡 Mẹo: "2 bánh poca 10k, 3 bò húc 15k, bàn 5"</Text>
+              </View>
+              <View style={styles.voiceEditActions}>
+                <TouchableOpacity
+                  style={styles.voiceEditCancelBtn}
+                  onPress={() => { setVoiceTextEditVisible(false); setPendingVoiceText(''); }}
+                >
+                  <Text style={styles.voiceEditCancelText}>Huỷ</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.voiceEditConfirmBtn, !pendingVoiceText.trim() && { opacity: 0.5 }]}
+                  onPress={handleVoiceTextConfirm}
+                  disabled={!pendingVoiceText.trim() || isProcessing}
+                >
+                  <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.voiceEditGradient}>
+                    {isProcessing
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={styles.voiceEditConfirmText}>🤖 Phân tích đơn hàng</Text>
+                    }
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── Product Quick-Pick Grid ──────────────────────────────────────────  */}
@@ -937,35 +945,131 @@ export function SellScreen() {
                 showsVerticalScrollIndicator={false}
               >
                 {products.map((product) => (
-                  <TouchableOpacity
-                    key={product.id}
-                    style={styles.productGridItem}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      const newItem: OrderItem = {
-                        productId: product.id,
-                        productName: product.name,
-                        quantity: 1,
-                        unitPrice: product.price,
-                        subtotal: product.price,
-                      };
-                      addToCurrentOrder(newItem);
-                      setProductGridVisible(false);
-                    }}
-                  >
-                    <View style={styles.productGridItemInner}>
-                      <Text style={styles.productGridItemName} numberOfLines={2}>{product.name}</Text>
-                      <Text style={styles.productGridItemPrice}>{formatMoney(product.price)}đ</Text>
-                    </View>
-                    <View style={styles.productGridAddBtn}>
+                  <View key={product.id} style={styles.productGridItem}>
+                    {/* Phần tap để thêm vào đơn */}
+                    <TouchableOpacity
+                      style={styles.productGridTapArea}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        const newItem: OrderItem = {
+                          productId: product.id,
+                          productName: product.name,
+                          quantity: 1,
+                          unitPrice: product.price,
+                          subtotal: product.price,
+                        };
+                        addToCurrentOrder(newItem);
+                        setProductGridVisible(false);
+                      }}
+                    >
+                      <View style={styles.productGridItemInner}>
+                        <Text style={styles.productGridItemName} numberOfLines={2}>{product.name}</Text>
+                        <Text style={styles.productGridItemPrice}>{formatMoney(product.price)}đ</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Nút Edit */}
+                    <TouchableOpacity
+                      style={styles.productGridEditBtn}
+                      onPress={() => {
+                        setEditingProductId(product.id);
+                        setEditingProductName(product.name);
+                        setEditingProductPrice(String(product.price));
+                        setProductEditVisible(true);
+                      }}
+                    >
+                      <Text style={styles.productGridEditIcon}>✏️</Text>
+                    </TouchableOpacity>
+
+                    {/* Nút + thêm */}
+                    <TouchableOpacity
+                      style={styles.productGridAddBtn}
+                      onPress={() => {
+                        const newItem: OrderItem = {
+                          productId: product.id,
+                          productName: product.name,
+                          quantity: 1,
+                          unitPrice: product.price,
+                          subtotal: product.price,
+                        };
+                        addToCurrentOrder(newItem);
+                        setProductGridVisible(false);
+                      }}
+                    >
                       <Text style={styles.productGridAddIcon}>+</Text>
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </ScrollView>
             )}
           </View>
         </View>
+      </Modal>
+
+      {/* ─── Product Edit Modal ───────────────────────────────────────────── */}
+      <Modal
+        visible={productEditVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProductEditVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>✏️ Sửa sản phẩm</Text>
+
+              <Text style={styles.modalLabel}>Tên sản phẩm</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editingProductName}
+                onChangeText={setEditingProductName}
+                placeholder="Tên sản phẩm"
+                placeholderTextColor="#94A3B8"
+                autoFocus
+              />
+
+              <Text style={styles.modalLabel}>Giá (VNĐ)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editingProductPrice}
+                onChangeText={setEditingProductPrice}
+                placeholder="VD: 25000"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setProductEditVisible(false)}
+                >
+                  <Text style={styles.modalCancelText}>Huỷ</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalSaveBtn}
+                  onPress={async () => {
+                    if (!editingProductId || !editingProductName.trim()) return;
+                    const newPrice = parseInt(editingProductPrice) || 0;
+                    try {
+                      await updateProduct(editingProductId, {
+                        name: editingProductName.trim(),
+                        price: newPrice,
+                      });
+                      setProductEditVisible(false);
+                    } catch (e) {
+                      Alert.alert('Lỗi', 'Không thể cập nhật sản phẩm.');
+                    }
+                  }}
+                >
+                  <Text style={styles.modalSaveText}>Lưu</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </AnimatedScreen >
   );
@@ -1843,6 +1947,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  productGridTapArea: {
+    flex: 1,
+    marginRight: 8,
+  },
+  productGridEditBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  productGridEditIcon: {
+    fontSize: 16,
+  },
+
   productGridItemInner: {
     flex: 1,
     marginRight: 12,
