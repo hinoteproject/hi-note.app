@@ -434,7 +434,11 @@ export function SellScreen() {
 
   return (
     <AnimatedScreen>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      >
         <LinearGradient
           colors={[Colors.gradientStart, Colors.gradientMid, Colors.gradientEnd]}
           style={styles.gradient}
