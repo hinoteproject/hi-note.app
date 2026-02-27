@@ -884,7 +884,6 @@ export function SellScreen() {
                 value={pendingVoiceText}
                 onChangeText={setPendingVoiceText}
                 multiline
-                autoFocus
                 placeholder="VD: 2 bánh poca 10k, 1 nước ngọt 15k"
                 placeholderTextColor="#94A3B8"
               />
