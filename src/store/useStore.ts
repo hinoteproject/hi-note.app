@@ -95,6 +95,7 @@ interface StoreState {
   deleteOrder: (id: string) => Promise<void>;
   // User
   user: {
+    id: string;
     name: string;
     phone?: string;
     email?: string;
@@ -124,6 +125,7 @@ export const useStore = create<StoreState>()((set, get) => ({
   user: null,
   setUser: (user) => {
     const u = {
+      id: (user as any).id || generateId(), // dùng id có sẵn hoặc tạo local id tạm
       name: user.name,
       phone: user.phone,
       email: user.email,
@@ -136,8 +138,10 @@ export const useStore = create<StoreState>()((set, get) => ({
     (async () => {
       try {
         if (isFirebaseConfigured) {
-          // call addUserToFirebase to ensure remote copy
-          await addUserToFirebase(u);
+          // call addUserToFirebase to ensure remote copy — returns real Firestore ID
+          const firebaseId = await addUserToFirebase(u);
+          // update user with real firebase id
+          set((state) => state.user ? { user: { ...state.user, id: firebaseId } } : {});
         }
       } catch (e) {
         // ignore remote errors
@@ -145,7 +149,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        await AsyncStorage.setItem('hi_note_user', JSON.stringify(u));
+        await AsyncStorage.setItem('hi_note_user', JSON.stringify(get().user));
       } catch (e) {
         // ignore if not available
       }
@@ -171,15 +175,17 @@ export const useStore = create<StoreState>()((set, get) => ({
   setProducts: (products) => set({ products }),
 
   loadProducts: async () => {
-    if (isFirebaseConfigured) {
-      const products = await getProductsFromFirebase();
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const products = await getProductsFromFirebase(uid);
       set({ products });
     }
   },
 
   addProduct: async (product) => {
-    if (isFirebaseConfigured) {
-      const id = await addProductToFirebase(product);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const id = await addProductToFirebase(uid, product);
       set((state) => ({
         products: [{
           ...product,
@@ -199,8 +205,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   updateProduct: async (id, updates) => {
-    if (isFirebaseConfigured) {
-      await updateProductInFirebase(id, updates);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      await updateProductInFirebase(uid, id, updates);
     }
     set((state) => ({
       products: state.products.map(p =>
@@ -210,8 +217,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   deleteProduct: async (id) => {
-    if (isFirebaseConfigured) {
-      await deleteProductFromFirebase(id);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      await deleteProductFromFirebase(uid, id);
     }
     set((state) => ({
       products: state.products.filter(p => p.id !== id)
@@ -235,8 +243,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   setOrders: (orders) => set({ orders }),
 
   loadOrders: async () => {
-    if (isFirebaseConfigured) {
-      const orders = await getOrdersFromFirebase();
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const orders = await getOrdersFromFirebase(uid);
       set({ orders });
     }
   },
@@ -301,7 +310,9 @@ export const useStore = create<StoreState>()((set, get) => ({
     let order: Order;
 
     if (isFirebaseConfigured) {
-      const id = await addOrderToFirebase(orderData);
+      const uid = get().user?.id as string | undefined;
+      if (!uid) throw new Error('Chưa đăng nhập');
+      const id = await addOrderToFirebase(uid, orderData);
       order = { ...orderData, id };
     } else {
       order = { ...orderData, id: generateId() };
@@ -338,7 +349,8 @@ export const useStore = create<StoreState>()((set, get) => ({
     };
 
     if (isFirebaseConfigured) {
-      await updateOrderInFirebase(orderId, updates);
+      const uid = get().user?.id as string | undefined;
+      if (uid) await updateOrderInFirebase(uid, orderId, updates);
     }
 
     set((state) => ({
@@ -353,10 +365,10 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   deleteOrder: async (id) => {
-    const { orders } = get();
     if (isFirebaseConfigured) {
+      const uid = get().user?.id as string | undefined;
       try {
-        await deleteOrderFromFirebase(id);
+        if (uid) await deleteOrderFromFirebase(uid, id);
       } catch (err) {
         console.warn('Delete order failed', err);
       }
@@ -370,7 +382,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       try {
         const remote = await getUserByPhoneFromFirebase(phone);
         if (remote) {
-          set({ user: { name: remote.name, phone: remote.phone, city: remote.city, business: remote.business, createdAt: remote.createdAt } });
+          set({ user: { id: remote.id, name: remote.name, phone: remote.phone, city: remote.city, business: remote.business, createdAt: remote.createdAt } });
           // persist locally too
           try {
             // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -418,7 +430,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       try {
         const remote = await getUserByEmailFromFirebase(email);
         if (remote) {
-          set({ user: { name: remote.name, phone: remote.phone, email: remote.email, city: remote.city, business: remote.business, createdAt: remote.createdAt } });
+          set({ user: { id: remote.id, name: remote.name, phone: remote.phone, email: remote.email, city: remote.city, business: remote.business, createdAt: remote.createdAt } });
           try {
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             await AsyncStorage.setItem('hi_note_user', JSON.stringify(remote));
@@ -454,15 +466,17 @@ export const useStore = create<StoreState>()((set, get) => ({
   setBanks: (banks) => set({ bankAccounts: banks }),
 
   loadBanks: async () => {
-    if (isFirebaseConfigured) {
-      const banks = await getBanksFromFirebase();
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const banks = await getBanksFromFirebase(uid);
       set({ bankAccounts: banks });
     }
   },
 
   addBankAccount: async (account) => {
-    if (isFirebaseConfigured) {
-      const id = await addBankToFirebase(account);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const id = await addBankToFirebase(uid, account);
       set((state) => ({
         bankAccounts: [...state.bankAccounts, { ...account, id }]
       }));
@@ -475,11 +489,11 @@ export const useStore = create<StoreState>()((set, get) => ({
 
   setDefaultBank: async (id) => {
     const { bankAccounts } = get();
+    const uid = get().user?.id as string | undefined;
 
-    if (isFirebaseConfigured) {
-      // Update all banks
+    if (isFirebaseConfigured && uid) {
       for (const bank of bankAccounts) {
-        await updateBankInFirebase(bank.id, { isDefault: bank.id === id });
+        await updateBankInFirebase(uid, bank.id, { isDefault: bank.id === id });
       }
     }
 
@@ -513,14 +527,16 @@ export const useStore = create<StoreState>()((set, get) => ({
   // Customers
   customers: [],
   loadCustomers: async () => {
-    if (isFirebaseConfigured) {
-      const customers = await getCustomersFromFirebase();
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const customers = await getCustomersFromFirebase(uid);
       set({ customers });
     }
   },
   addCustomer: async (customer) => {
-    if (isFirebaseConfigured) {
-      const id = await addCustomerToFirebase(customer);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const id = await addCustomerToFirebase(uid, customer);
       set((state) => ({
         customers: [{ ...customer, id, createdAt: new Date() }, ...state.customers]
       }));
@@ -531,16 +547,18 @@ export const useStore = create<StoreState>()((set, get) => ({
     }
   },
   updateCustomer: async (id, updates) => {
-    if (isFirebaseConfigured) {
-      await updateCustomerInFirebase(id, updates);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      await updateCustomerInFirebase(uid, id, updates);
     }
     set((state) => ({
       customers: state.customers.map(c => c.id === id ? { ...c, ...updates } : c)
     }));
   },
   deleteCustomer: async (id) => {
-    if (isFirebaseConfigured) {
-      await deleteCustomerFromFirebase(id);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      await deleteCustomerFromFirebase(uid, id);
     }
     set((state) => ({
       customers: state.customers.filter(c => c.id !== id)
@@ -550,14 +568,16 @@ export const useStore = create<StoreState>()((set, get) => ({
   // Stock Imports
   stockImports: [],
   loadStockImports: async () => {
-    if (isFirebaseConfigured) {
-      const stockImports = await getStockImportsFromFirebase();
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const stockImports = await getStockImportsFromFirebase(uid);
       set({ stockImports });
     }
   },
   addStockImport: async (data) => {
-    if (isFirebaseConfigured) {
-      const id = await addStockImportToFirebase(data);
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const id = await addStockImportToFirebase(uid, data);
       set((state) => ({
         stockImports: [{ ...data, id, createdAt: new Date() }, ...state.stockImports]
       }));
@@ -571,8 +591,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   // Expenses
   expenses: [],
   loadExpenses: async () => {
-    if (isFirebaseConfigured) {
-      const expenses = await getExpensesFromFirebase();
+    const uid = get().user?.id as string | undefined;
+    if (isFirebaseConfigured && uid) {
+      const expenses = await getExpensesFromFirebase(uid);
       set({ expenses });
     }
   },
