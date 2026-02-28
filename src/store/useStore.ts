@@ -163,12 +163,28 @@ export const useStore = create<StoreState>()((set, get) => ({
       if (raw) {
         const parsed = JSON.parse(raw);
         parsed.createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date();
+
+        // Migration: user cũ không có id field — tìm lại từ Firebase
+        if (!parsed.id) {
+          try {
+            let remote = null;
+            if (parsed.phone) remote = await getUserByPhoneFromFirebase(parsed.phone);
+            else if (parsed.email) remote = await getUserByEmailFromFirebase(parsed.email);
+            parsed.id = remote?.id || generateId(); // fallback: local id tạm
+          } catch {
+            parsed.id = generateId();
+          }
+          // Lưu lại với id mới
+          try { await AsyncStorage.setItem('hi_note_user', JSON.stringify(parsed)); } catch { }
+        }
+
         set({ user: parsed });
       }
     } catch (e) {
       // ignore
     }
   },
+
 
   // Products
   products: [],
@@ -311,9 +327,14 @@ export const useStore = create<StoreState>()((set, get) => ({
 
     if (isFirebaseConfigured) {
       const uid = get().user?.id as string | undefined;
-      if (!uid) throw new Error('Chưa đăng nhập');
-      const id = await addOrderToFirebase(uid, orderData);
-      order = { ...orderData, id };
+      // Nếu không có uid (user cưa đã có id), vẫn tạo đơn nhưng không lưu Firebase
+      if (uid) {
+        const id = await addOrderToFirebase(uid, orderData);
+        order = { ...orderData, id };
+      } else {
+        order = { ...orderData, id: generateId() };
+        console.warn('⚠️ Tạo đơn local vì user chưa có ID — đăng xuất và đăng nhập lại để đồng bộ dữ liệu');
+      }
     } else {
       order = { ...orderData, id: generateId() };
     }
