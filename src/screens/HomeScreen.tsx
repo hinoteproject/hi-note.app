@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Text,
   Animated,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,56 @@ import AnimatedNumber from '../components/AnimatedNumber';
 import DatePickerModal from '../components/DatePickerModal';
 import RevenueChart from '../components/RevenueChart';
 import { Colors, Gradients, Shadows } from '../constants/theme';
+
+// ── QuickCard: spring bounce khi nhấn ────────────────────────────────────────
+function QuickCard({ icon, label, gradient, onPress }: {
+  icon: string; label: string;
+  gradient: [string, string] | readonly [string, string, ...string[]];
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <Pressable
+      onPressIn={() => Animated.spring(scale, { toValue: 0.90, useNativeDriver: true, speed: 50, bounciness: 2 }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 12 }).start()}
+      onPress={onPress}
+      style={{ flex: 1 }}
+    >
+      <Animated.View style={[styles2.quickCard, { transform: [{ scale }] }]}>
+        <LinearGradient colors={gradient as [string, string]} style={styles2.quickIconWrap}>
+          <Text style={styles2.quickIcon}>{icon}</Text>
+        </LinearGradient>
+        <Text style={styles2.quickLabel}>{label}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Được dùng bởi QuickCard (styles2) ─────────────────────────────────────────
+const styles2 = StyleSheet.create({
+  quickCard: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    paddingVertical: 18,
+    paddingHorizontal: 10,
+    borderRadius: 22,
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  quickIconWrap: {
+    width: 48, height: 48, borderRadius: 18,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  quickIcon: { fontSize: 22 },
+  quickLabel: { fontSize: 12, fontWeight: '800', color: '#334155', letterSpacing: -0.2, textAlign: 'center' },
+});
+
 
 type TimeFilter = 'today' | 'yesterday' | '7days' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom';
 
@@ -307,22 +358,12 @@ export function HomeScreen() {
             {renderAnimatedCard(2,
               <View style={styles.quickGrid}>
                 {[
-                  { icon: '✎', label: 'Bán hàng', gradient: Gradients.primary, onPress: goToSell },
+                  { icon: '🛍️', label: 'Bán hàng', gradient: Gradients.primary, onPress: goToSell },
                   { icon: '💸', label: 'Chi phí', gradient: ['#F59E0B', '#D97706'] as [string, string], onPress: goToExpense },
                   { icon: '📦', label: 'Hàng hóa', gradient: ['#3B82F6', '#2563EB'] as [string, string], onPress: goToProducts },
-                  { icon: '📊', label: 'Báo cáo', gradient: Gradients.purple, onPress: () => navigation.navigate('Reports') },
+                  { icon: '📈', label: 'Báo cáo', gradient: Gradients.purple, onPress: () => navigation.navigate('Reports') },
                 ].map((item, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.quickCard}
-                    onPress={item.onPress}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient colors={item.gradient} style={styles.quickIconWrap}>
-                      <Text style={styles.quickIcon}>{item.icon}</Text>
-                    </LinearGradient>
-                    <Text style={styles.quickLabel}>{item.label}</Text>
-                  </TouchableOpacity>
+                  <QuickCard key={i} {...item} />
                 ))}
               </View>
             )}
@@ -469,22 +510,27 @@ const styles = StyleSheet.create({
   quickGrid: { flexDirection: 'row', gap: 10 },
   quickCard: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    padding: 16,
-    borderRadius: 20,
+    borderColor: 'rgba(255,255,255,0.6)',
+    paddingVertical: 18,
+    paddingHorizontal: 10,
+    borderRadius: 22,
     alignItems: 'center',
     gap: 10,
-    ...Shadows.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   quickIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  quickIcon: { fontSize: 20, color: '#FFF' },
-  quickLabel: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  quickIcon: { fontSize: 22 },
+  quickLabel: { fontSize: 12, fontWeight: '800', color: '#334155', letterSpacing: -0.2 },
 });

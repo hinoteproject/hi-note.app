@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +25,8 @@ export function PaymentScreen() {
   const navigation = useNavigation<any>();
   const { currentOrder, currentTable, currentBillName, getDefaultBank, createOrder, clearCurrentOrder } = useStore();
   const [loading, setLoading] = useState<'cash' | 'transfer' | null>(null);
+  const cashScale = useRef(new Animated.Value(1)).current;
+  const transferScale = useRef(new Animated.Value(1)).current;
 
   const total = currentOrder.reduce((sum, item) => sum + item.subtotal, 0);
   const bank = getDefaultBank();
@@ -101,7 +105,11 @@ export function PaymentScreen() {
               </View>
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Thanh toán</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Main')} activeOpacity={0.7}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Main')}
+              activeOpacity={0.7}
+              style={styles.homeBtnCircle}
+            >
               <Text style={styles.homeLink}>🏠</Text>
             </TouchableOpacity>
           </View>
@@ -129,6 +137,13 @@ export function PaymentScreen() {
                     </View>
                     <Text style={styles.itemPrice}>{formatMoney(item.subtotal)}đ</Text>
                   </View>
+                ))}
+              </View>
+
+              {/* Dashed divider kiểu hóa đơn */}
+              <View style={styles.dashedDivider}>
+                {Array.from({ length: 30 }).map((_, i) => (
+                  <View key={i} style={styles.dashSegment} />
                 ))}
               </View>
 
@@ -174,41 +189,60 @@ export function PaymentScreen() {
               </GlassCard>
             )}
 
-            {/* Premium Action Buttons */}
             <View style={styles.actionSection}>
               {/* Cash Button */}
-              <TouchableOpacity activeOpacity={0.8} onPress={handleCashPayment} disabled={!!loading}>
-                <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryBtn}>
-                  {loading === 'cash' ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryBtnIcon}>💵</Text>
-                      <View>
-                        <Text style={styles.primaryBtnText}>Tiền mặt</Text>
-                        <Text style={styles.primaryBtnSub}>{formatMoney(total)}đ</Text>
-                      </View>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+              <Pressable
+                onPressIn={() => Animated.spring(cashScale, { toValue: 0.96, useNativeDriver: true, speed: 50 }).start()}
+                onPressOut={() => Animated.spring(cashScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start()}
+                onPress={handleCashPayment}
+                disabled={!!loading}
+              >
+                <Animated.View style={{ transform: [{ scale: cashScale }] }}>
+                  <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryBtn}>
+                    {loading === 'cash' ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.primaryBtnIcon}>💵</Text>
+                        <View>
+                          <Text style={styles.primaryBtnText}>Tiền mặt</Text>
+                          <Text style={styles.primaryBtnSub}>{formatMoney(total)}đ</Text>
+                        </View>
+                        <View style={styles.primaryBtnArrow}>
+                          <Text style={styles.primaryBtnArrowText}>→</Text>
+                        </View>
+                      </>
+                    )}
+                  </LinearGradient>
+                </Animated.View>
+              </Pressable>
 
               {/* Transfer Button */}
-              <TouchableOpacity activeOpacity={0.8} onPress={handleTransferConfirm} disabled={!!loading}>
-                <LinearGradient colors={Gradients.primary} style={styles.primaryBtn}>
-                  {loading === 'transfer' ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryBtnIcon}>📱</Text>
-                      <View>
-                        <Text style={styles.primaryBtnText}>Chuyển khoản</Text>
-                        <Text style={styles.primaryBtnSub}>Tạo đơn chờ thanh toán</Text>
-                      </View>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+              <Pressable
+                onPressIn={() => Animated.spring(transferScale, { toValue: 0.96, useNativeDriver: true, speed: 50 }).start()}
+                onPressOut={() => Animated.spring(transferScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start()}
+                onPress={handleTransferConfirm}
+                disabled={!!loading}
+              >
+                <Animated.View style={{ transform: [{ scale: transferScale }] }}>
+                  <LinearGradient colors={Gradients.primary} style={styles.primaryBtn}>
+                    {loading === 'transfer' ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.primaryBtnIcon}>📲</Text>
+                        <View>
+                          <Text style={styles.primaryBtnText}>Chuyển khoản</Text>
+                          <Text style={styles.primaryBtnSub}>Tạo đơn chờ thanh toán</Text>
+                        </View>
+                        <View style={styles.primaryBtnArrow}>
+                          <Text style={styles.primaryBtnArrowText}>→</Text>
+                        </View>
+                      </>
+                    )}
+                  </LinearGradient>
+                </Animated.View>
+              </Pressable>
 
               {/* Cancel */}
               <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} activeOpacity={0.7}>
@@ -239,7 +273,14 @@ const styles = StyleSheet.create({
   },
   backIcon: { fontSize: 18, color: '#334155', fontWeight: '600' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
-  homeLink: { fontSize: 22 },
+  homeBtnCircle: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+  },
+  homeLink: { fontSize: 20 },
 
   content: { flex: 1 },
   contentContainer: { paddingHorizontal: 16, paddingBottom: 40 },
@@ -303,19 +344,32 @@ const styles = StyleSheet.create({
   // Action Buttons
   actionSection: { gap: 12, marginTop: 8 },
   primaryBtn: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row' as const, alignItems: 'center' as const,
     paddingVertical: 18, paddingHorizontal: 24,
     borderRadius: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15, shadowRadius: 12, elevation: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2, shadowRadius: 14, elevation: 8,
+    gap: 16,
   },
-  primaryBtnIcon: { fontSize: 28, marginRight: 16 },
-  primaryBtnText: { fontSize: 17, fontWeight: '800', color: '#FFF' },
-  primaryBtnSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '500', marginTop: 2 },
+  primaryBtnIcon: { fontSize: 28 },
+  primaryBtnText: { fontSize: 17, fontWeight: '800' as const, color: '#FFF' },
+  primaryBtnSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '500' as const, marginTop: 2 },
+  primaryBtnArrow: { marginLeft: 'auto' as any },
+  primaryBtnArrowText: { fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' as const },
+
+  // Dashed divider
+  dashedDivider: {
+    flexDirection: 'row' as const, justifyContent: 'space-between' as const,
+    paddingHorizontal: 20, marginBottom: 16, overflow: 'hidden' as const,
+  },
+  dashSegment: {
+    width: 6, height: 2, borderRadius: 1,
+    backgroundColor: '#CBD5E1',
+  },
 
   cancelBtn: {
-    alignItems: 'center', paddingVertical: 14,
+    alignItems: 'center' as const, paddingVertical: 14,
     borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.04)',
   },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
+  cancelText: { fontSize: 14, fontWeight: '600' as const, color: '#94A3B8' },
 });

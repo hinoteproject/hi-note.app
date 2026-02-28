@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Switch,
   Image,
   Platform,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +21,58 @@ import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
 import GlassCard from '../components/GlassCard';
 import { Colors, Gradients, Shadows } from '../constants/theme';
+
+// ── AnimatedMenuCard: spring bounce khi nhấn ─────────────────────────────────
+function AnimatedMenuCard({
+  item, onPress,
+}: {
+  item: { title: string; icon: string; gradient: string[] };
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <Pressable
+      style={{ width: '48%' }}
+      onPressIn={() => Animated.spring(scale, { toValue: 0.92, useNativeDriver: true, speed: 50, bounciness: 2 }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 12 }).start()}
+      onPress={onPress}
+    >
+      <Animated.View style={[menuCardStyles.menuItem, { transform: [{ scale }] }]}>
+        <LinearGradient
+          colors={item.gradient as [string, string]}
+          style={menuCardStyles.menuIconBox}
+        >
+          <Text style={{ fontSize: 26 }}>{item.icon}</Text>
+        </LinearGradient>
+        <Text style={menuCardStyles.menuTitle}>{item.title}</Text>
+        <Text style={menuCardStyles.menuArrow}>›</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const menuCardStyles = StyleSheet.create({
+  menuItem: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    padding: 18,
+    borderRadius: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  menuIconBox: {
+    width: 54, height: 54, borderRadius: 20,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 10,
+  },
+  menuTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', textAlign: 'center' },
+  menuArrow: { fontSize: 18, color: '#CBD5E1', marginTop: 4, fontWeight: '300' },
+});
+
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -119,20 +173,11 @@ export function SettingsScreen() {
             <Text style={styles.sectionTitle}>🏪 Quản lý cửa hàng</Text>
             <View style={styles.menuGrid}>
               {menuItems.map((item, index) => (
-                <TouchableOpacity
+                <AnimatedMenuCard
                   key={index}
-                  style={styles.menuItem}
+                  item={item}
                   onPress={() => navigation.navigate(item.route)}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={item.gradient as [string, string]}
-                    style={styles.menuIconBox}
-                  >
-                    <Text style={{ fontSize: 24 }}>{item.icon}</Text>
-                  </LinearGradient>
-                  <Text style={styles.menuTitle}>{item.title}</Text>
-                </TouchableOpacity>
+                />
               ))}
             </View>
 
@@ -183,7 +228,12 @@ export function SettingsScreen() {
             </GlassCard>
 
             {/* ─── Logout ─── */}
-            <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={logout}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.logoutIcon}>🚪</Text>
               <Text style={styles.logoutText}>Đăng xuất</Text>
             </TouchableOpacity>
 
@@ -301,15 +351,23 @@ const styles = StyleSheet.create({
   menuGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   menuItem: {
     width: '48%',
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.6)',
     padding: 18,
     borderRadius: 22,
     alignItems: 'center',
-    ...Shadows.card,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  menuIconBox: { width: 52, height: 52, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  menuItemArrowRow: {
+    width: '100%', flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4,
+  },
+  menuItemArrow: { fontSize: 13, color: '#CBD5E1', fontWeight: '700' },
+  menuIconBox: { width: 52, height: 52, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   menuTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
 
   // Bank Section
@@ -338,10 +396,23 @@ const styles = StyleSheet.create({
 
   // Logout
   logoutBtn: {
-    backgroundColor: '#FEF2F2', paddingVertical: 16, borderRadius: 18, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(239,68,68,0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    paddingVertical: 16,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(239,68,68,0.2)',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  logoutText: { color: '#EF4444', fontWeight: '700', fontSize: 15 },
+  logoutIcon: { fontSize: 18 },
+  logoutText: { color: '#EF4444', fontWeight: '800', fontSize: 15, letterSpacing: -0.2 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
