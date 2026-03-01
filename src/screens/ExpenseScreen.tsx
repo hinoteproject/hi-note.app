@@ -26,8 +26,11 @@ import AnimatedScreen from '../components/AnimatedScreen';
 import GlassCard from '../components/GlassCard';
 import AnimatedNumber from '../components/AnimatedNumber';
 import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording } from '../services/voiceRecorder';
+import { useStore } from '../store/useStore';
 
 export function ExpenseScreen() {
+  const user = useStore(state => state.user);
+  const userId = user?.id;
   const [showAddModal, setShowAddModal] = useState(false);
   const [inputText, setInputText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -72,11 +75,11 @@ export function ExpenseScreen() {
         { id: '2', name: 'Tiền điện tháng 5', amount: 1200000, category: 'electric', createdAt: new Date(Date.now() - 86400000) },
       ];
       setExpenses(mockData);
-      if (isFirebaseConfigured) {
+      if (isFirebaseConfigured && userId) {
         try {
-          const data = await getExpensesFromFirebase();
+          const data = await getExpensesFromFirebase(userId);
           if (data.length > 0) setExpenses(data);
-          unsubscribe = subscribeToExpenses((newExpenses) => { setExpenses(newExpenses); });
+          unsubscribe = subscribeToExpenses(userId, (newExpenses: Expense[]) => { setExpenses(newExpenses); });
         } catch (error) { console.error('Error loading expenses:', error); }
       }
       setIsLoading(false);
@@ -86,7 +89,7 @@ export function ExpenseScreen() {
       if (unsubscribe) unsubscribe();
       if (checkIsRecording()) cancelRecording();
     };
-  }, []);
+  }, [userId]);
 
   const handleMicPress = async () => {
     if (isRecording) {
@@ -123,8 +126,8 @@ export function ExpenseScreen() {
         categories.find(c => c.key === selectedCategory)?.label || 'Chi phí khác';
       setIsSaving(true);
       try {
-        if (isFirebaseConfigured) {
-          await addExpenseToFirebase({ name, amount, category: selectedCategory || 'other', createdAt: new Date() });
+        if (isFirebaseConfigured && userId) {
+          await addExpenseToFirebase(userId, { name, amount, category: selectedCategory || 'other', createdAt: new Date() });
         } else {
           const newExpense: Expense = { id: Date.now().toString(), name, amount, category: selectedCategory || 'other', createdAt: new Date() };
           setExpenses([newExpense, ...expenses]);

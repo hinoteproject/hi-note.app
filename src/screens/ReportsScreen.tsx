@@ -18,16 +18,16 @@ import { isFirebaseConfigured } from '../config/keys';
 type Period = 'today' | 'week' | 'month' | 'year';
 
 export function ReportsScreen() {
-  const { orders, products } = useStore();
+  const { orders, products, user } = useStore();
   const [period, setPeriod] = useState<Period>('month');
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
   // Load expenses từ Firebase
   useEffect(() => {
     const loadExpenses = async () => {
-      if (isFirebaseConfigured) {
+      if (isFirebaseConfigured && user?.id) {
         try {
-          const data = await getExpensesFromFirebase();
+          const data = await getExpensesFromFirebase(user.id);
           setExpenses(data);
         } catch (error) {
           console.error('Error loading expenses:', error);
@@ -35,7 +35,7 @@ export function ReportsScreen() {
       }
     };
     loadExpenses();
-  }, []);
+  }, [user?.id]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -58,7 +58,7 @@ export function ReportsScreen() {
 
     const revenue = paidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
     const totalExpense = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-    
+
     // Tính giá vốn
     let costOfGoods = 0;
     paidOrders.forEach(order => {
