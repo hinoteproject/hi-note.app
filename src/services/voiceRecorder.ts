@@ -1,213 +1,199 @@
-import { Audio } from 'expo-av';
-import { Alert } from 'react-native';
-import { GROQ_API_KEY, isGroqConfigured } from '../config/keys';
+import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 
-let recording: Audio.Recording | null = null;
+let recognizing = false;
+let finalTranscript = '';
+let interimCallback: ((text: string) => void) | null = null;
+let volumeCallback: ((volume: number) => void) | null = null;
+let resolveStop: ((text: string) => void) | null = null;
+let rejectStop: ((err: Error) => void) | null = null;
+let stopTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-// Use configured key from src/config/keys.ts
-const GROQ_KEY = (isGroqConfigured ? GROQ_API_KEY : '');
+// Event listeners (kept as module-level so we can remove them)
+let resultListener: { remove: () => void } | null = null;
+let endListener: { remove: () => void } | null = null;
+let errorListener: { remove: () => void } | null = null;
+let volumeListener: { remove: () => void } | null = null;
+
+function cleanupListeners() {
+  resultListener?.remove();
+  endListener?.remove();
+  errorListener?.remove();
+  volumeListener?.remove();
+  resultListener = null;
+  endListener = null;
+  errorListener = null;
+  volumeListener = null;
+}
+
+function fullReset() {
+  recognizing = false;
+  finalTranscript = '';
+  resolveStop = null;
+  rejectStop = null;
+  if (stopTimeoutId) {
+    clearTimeout(stopTimeoutId);
+    stopTimeoutId = null;
+  }
+  cleanupListeners();
+}
+
+/**
+ * Wait until the native recognizer is truly idle before proceeding.
+ * On Android, calling start() while the previous session is still tearing
+ * down causes a silent failure.
+ */
+async function waitForIdle(maxWaitMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const state = await ExpoSpeechRecognitionModule.getStateAsync();
+      // If state is 'starting', 'recognizing', or 'stopping', it's still active
+      if (state !== 'starting' && state !== 'recognizing' && state !== 'stopping') return;
+    } catch {
+      // getStateAsync may not be available on all versions, just wait a bit
+      await new Promise((r) => setTimeout(r, 300));
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
 
 export async function startRecording(): Promise<void> {
+  // If previous session is still lingering, force-abort and wait
+  if (recognizing) {
+    try { ExpoSpeechRecognitionModule.abort(); } catch { }
+    fullReset();
+  }
+
   try {
-    const permission = await Audio.requestPermissionsAsync();
-    if (permission.status !== 'granted') {
-      throw new Error('Cần cấp quyền microphone để ghi âm');
+    const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!result.granted) {
+      throw new Error('Cần cấp quyền microphone và nhận diện giọng nói');
     }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    // Wait for native recognizer to be ready
+    await waitForIdle();
+
+    // Reset state
+    finalTranscript = '';
+    recognizing = true;
+
+    // Setup listeners before starting
+    cleanupListeners();
+
+    resultListener = ExpoSpeechRecognitionModule.addListener('result', (event) => {
+      const transcript = event.results[0]?.transcript || '';
+      if (event.isFinal) {
+        finalTranscript = transcript;
+      }
+      // Send interim results to callback
+      if (interimCallback) {
+        interimCallback(transcript);
+      }
     });
 
-    const { recording: newRecording } = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY
-    );
+    endListener = ExpoSpeechRecognitionModule.addListener('end', () => {
+      console.log('🎤 Speech recognition ended');
+      const pending = resolveStop;
+      const text = finalTranscript.trim();
+      fullReset();
+      // Resolve AFTER full reset so next startRecording() won't conflict
+      if (pending) {
+        pending(text);
+      }
+    });
 
-    recording = newRecording;
-    console.log('🎤 Recording started');
+    errorListener = ExpoSpeechRecognitionModule.addListener('error', (event) => {
+      console.error('🎤 Speech recognition error:', event.error, event.message);
+      const pending = rejectStop;
+      fullReset();
+      if (pending) {
+        pending(new Error(event.message || `Lỗi nhận diện giọng nói: ${event.error}`));
+      }
+    });
+
+    volumeListener = ExpoSpeechRecognitionModule.addListener('volumechange', (event) => {
+      if (volumeCallback) {
+        // Value ranges from roughly -2 (quiet) to 10 (loud)
+        volumeCallback(event.value);
+      }
+    });
+
+    // Start native speech recognition
+    ExpoSpeechRecognitionModule.start({
+      lang: 'vi-VN',
+      interimResults: true,
+      continuous: false,
+      addsPunctuation: true,
+      requiresOnDeviceRecognition: false,
+      volumeChangeEventOptions: {
+        enabled: true,
+        intervalMillis: 50, // update volume every 50ms for smooth animation
+      },
+    });
+
+    console.log('🎤 Speech recognition started (native)');
   } catch (error) {
+    fullReset();
     console.error('Start recording error:', error);
     throw error;
   }
 }
 
 export async function stopRecording(): Promise<string> {
-  if (!recording) {
+  if (!recognizing) {
     throw new Error('Không có recording nào đang chạy');
   }
 
-  try {
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+  return new Promise<string>((resolve, reject) => {
+    resolveStop = resolve;
+    rejectStop = reject;
 
-    const uri = recording.getURI();
-    recording = null;
-
-    if (!uri) {
-      throw new Error('Không lấy được file audio');
-    }
-
-    console.log('🎤 Recording stopped, URI:', uri);
-
+    // Tell the engine to stop — it will fire a final result then 'end'
     try {
-      const text = await transcribeAudio(uri);
-      return text;
-    } catch (err: any) {
-      console.error('Transcription failed:', err);
-      // notify user but don't throw so UI remains responsive
-      try {
-        Alert.alert('Lỗi ghi âm', err?.message || 'Không thể chuyển giọng nói thành văn bản');
-      } catch (e) {
-        // ignore alert errors in non-UI contexts
-      }
-      // Return special marker with audio URI so callers can fallback to play/retry
-      return `AUDIO_URI::${uri}`;
+      ExpoSpeechRecognitionModule.stop();
+    } catch (e) {
+      // If stop() throws, the recognizer may already be stopped
+      fullReset();
+      resolve(finalTranscript.trim());
+      return;
     }
-  } catch (error) {
-    console.error('Stop recording error:', error);
-    recording = null;
-    throw error;
-  }
+
+    // Safety timeout: if 'end' never fires, resolve with whatever we have
+    stopTimeoutId = setTimeout(() => {
+      if (resolveStop) {
+        const text = finalTranscript.trim();
+        fullReset();
+        resolve(text);
+      }
+    }, 5000);
+  });
 }
 
 export function cancelRecording(): void {
-  if (recording) {
-    recording.stopAndUnloadAsync();
-    recording = null;
+  if (recognizing) {
+    try { ExpoSpeechRecognitionModule.abort(); } catch { }
+    fullReset();
   }
 }
 
 export function isRecording(): boolean {
-  return recording !== null;
+  return recognizing;
 }
 
-async function transcribeAudio(audioUri: string): Promise<string> {
-  console.log('📤 Sending to Groq Whisper...');
-
-  if (!GROQ_KEY) {
-    throw new Error('GROQ API key chưa được cấu hình. Vui lòng cập nhật src/config/keys.ts');
-  }
-
-  // Try RN-friendly upload first (append local uri object). This worked previously on many Expo setups.
-  const tryLocalUpload = async () => {
-    const formData = new FormData();
-    try {
-
-      // If the URI looks like a local file (file:// or absolute path), attach as RN file object
-      // On some Android versions, file:// is required.
-      let uriToUpload = audioUri;
-      if (!uriToUpload.startsWith('file://') && !uriToUpload.startsWith('http')) {
-        uriToUpload = `file://${uriToUpload}`;
-      }
-
-      if (uriToUpload.startsWith('file://') || uriToUpload.startsWith('/')) {
-        formData.append('model', 'whisper-large-v3');
-        formData.append('file', { uri: uriToUpload, type: 'audio/m4a', name: 'audio.m4a' } as any);
-      } else {
-        // remote url - fetch blob instead
-        const fileResp = await fetch(audioUri);
-        const blob = await fileResp.blob();
-        formData.append('model', 'whisper-large-v3');
-        formData.append('file', blob as any, 'audio.m4a');
-      }
-
-      formData.append('language', 'vi');
-      formData.append('response_format', 'text');
-
-      const makeRequest = async () => {
-        return await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GROQ_KEY}`,
-            // DO NOT set Content-Type for FormData - RN sets it automatically with boundary
-          },
-          body: formData,
-        });
-      };
-
-      let response = await makeRequest();
-      if (!response.ok) {
-        // single retry
-        response = await makeRequest();
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Groq Whisper error (local upload):', errorText);
-        if (response.status === 401) {
-          throw new Error('Invalid API Key (transcription service). Vui lòng kiểm tra cấu hình.');
-        }
-        throw new Error(`Lỗi transcription: ${response.status}`);
-      }
-
-      const text = await response.text();
-      console.log('✅ Transcribed (local upload):', text);
-      return text.trim();
-    } catch (e) {
-      console.warn('Local upload strategy failed, will try blob fallback:', e);
-      throw e;
-    }
-  };
-
-  // Blob fallback (if local upload fails on some platforms)
-  const tryBlobFallback = async () => {
-    try {
-      const fileResp = await fetch(audioUri);
-      const blob = await fileResp.blob();
-
-      const formData = new FormData();
-      formData.append('file', blob as any, 'audio.m4a');
-      formData.append('model', 'whisper-large-v3');
-      formData.append('language', 'vi');
-      formData.append('response_format', 'text');
-
-      const makeRequest = async () => {
-        return await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GROQ_KEY}`,
-          },
-          body: formData,
-        });
-      };
-
-      let response = await makeRequest();
-      if (!response.ok) {
-        response = await makeRequest();
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Groq Whisper error (blob fallback):', errorText);
-        if (response.status === 401) {
-          throw new Error('Invalid API Key (transcription service). Vui lòng kiểm tra cấu hình.');
-        }
-        throw new Error(`Lỗi transcription: ${response.status}`);
-      }
-
-      const text = await response.text();
-      console.log('✅ Transcribed (blob fallback):', text);
-      return text.trim();
-    } catch (err) {
-      console.error('Blob fallback failed:', err);
-      throw err;
-    }
-  };
-
-  try {
-    return await tryLocalUpload();
-  } catch (e) {
-    // If the local upload failed with a network error (common on some Android/Expo setups), try blob fallback.
-    try {
-      return await tryBlobFallback();
-    } catch (err) {
-      console.error('transcribeAudio error (both strategies):', err);
-      throw err;
-    }
-  }
+/**
+ * Register a callback to receive interim (real-time) transcription results.
+ * Call with `null` to unregister.
+ */
+export function onInterimResult(callback: ((text: string) => void) | null): void {
+  interimCallback = callback;
 }
 
-// exported helper to retry transcription from outside (used by UI fallback)
-export async function retryTranscribe(audioUri: string): Promise<string> {
-  return await transcribeAudio(audioUri);
+/**
+ * Register a callback to receive real-time volume updates.
+ * Value typically ranges from -2 (quiet) to 10 (loud).
+ * Call with `null` to unregister.
+ */
+export function onVolumeChange(callback: ((volume: number) => void) | null): void {
+  volumeCallback = callback;
 }

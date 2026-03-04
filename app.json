@@ -39,6 +39,13 @@
           "microphonePermission": "Cho phép Hi-Note truy cập microphone để ghi âm giọng nói."
         }
       ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Cho phép Hi-Note truy cập microphone để nhận diện giọng nói.",
+          "speechRecognitionPermission": "Cho phép Hi-Note sử dụng nhận diện giọng nói."
+        }
+      ],
       "expo-asset"
     ],
     "extra": {

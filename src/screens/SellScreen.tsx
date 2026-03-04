@@ -20,7 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useStore } from '../store/useStore';
 import AnimatedScreen from '../components/AnimatedScreen';
 import { parseVoiceToOrder } from '../services/orderParser';
-import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording, retryTranscribe } from '../services/voiceRecorder';
+import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording, onInterimResult, onVolumeChange } from '../services/voiceRecorder';
 import { extractOrderFromImage } from '../services/imageOcr';
 import { Colors, Gradients, Shadows } from '../constants/theme';
 import { OrderItem } from '../types';
@@ -32,6 +32,10 @@ export function SellScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const recordingAnim = useRef(new Animated.Value(1)).current;
+  const voiceSheetAnim = useRef(new Animated.Value(300)).current; // starts off-screen below
+
+  // Waveform bars
+  const waveAnims = useRef([...Array(5)].map(() => new Animated.Value(1))).current;
 
   // Edit modal states
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -45,9 +49,8 @@ export function SellScreen() {
   const [pendingItems, setPendingItems] = useState<OrderItem[]>([]);
   const [pendingTable, setPendingTable] = useState<string>('');
 
-  // Voice Text Edit modal — hiện raw text cho user sửa trước khi AI parse
-  const [voiceTextEditVisible, setVoiceTextEditVisible] = useState(false);
-  const [pendingVoiceText, setPendingVoiceText] = useState('');
+  // Real-time transcript from native STT
+  const [liveTranscript, setLiveTranscript] = useState('');
 
   // Product Grid modal
   const [productGridVisible, setProductGridVisible] = useState(false);
@@ -79,7 +82,7 @@ export function SellScreen() {
 
   const formatMoney = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount);
 
-  // Recording animation
+  // Recording animation + voice sheet slide
   useEffect(() => {
     if (isRecording) {
       Animated.loop(
@@ -88,8 +91,51 @@ export function SellScreen() {
           Animated.timing(recordingAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
         ])
       ).start();
+      // Slide voice sheet up (like keyboard)
+      Animated.spring(voiceSheetAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 20,
+        stiffness: 200,
+      }).start();
+      // Register real-time transcript callback — fills input directly
+      onInterimResult((text) => {
+        setInputText(text);
+        setLiveTranscript(text);
+        // Register real-time volume callback for dynamic waveform
+        onVolumeChange((vol) => {
+          // Volume ranges roughly from -2 to 10
+          const normalized = Math.max(0, Math.min(1, (vol + 2) / 12));
+
+          // Target scale based on volume (base 1 + up to 2.5 extra)
+          const targetScale = 1 + (normalized * 2.5);
+
+          // Animate each bar to the new scale with slight random variations for organic look
+          waveAnims.forEach((anim) => {
+            const randomTarget = targetScale * (0.8 + Math.random() * 0.4);
+            Animated.spring(anim, {
+              toValue: Math.max(1, randomTarget),
+              useNativeDriver: true,
+              damping: 10,
+              stiffness: 100,
+            }).start();
+          });
+        });
+      });
     } else {
       recordingAnim.setValue(1);
+      waveAnims.forEach(anim => anim.setValue(1));
+
+      // Slide voice sheet down
+      Animated.timing(voiceSheetAnim, {
+        toValue: 300,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+
+      onInterimResult(null);
+      onVolumeChange(null);
+      setLiveTranscript('');
     }
   }, [isRecording]);
 
@@ -178,74 +224,51 @@ export function SellScreen() {
     }
   };
 
-  // Khi user bấm "Gửi" trong Voice Text Edit modal
-  const handleVoiceTextConfirm = async () => {
-    setVoiceTextEditVisible(false);
-    const text = pendingVoiceText.trim();
-    if (text) {
-      setInputText(text);
-      await processInput(text);
-    }
-    setPendingVoiceText('');
-  };
-
   const handleMicPress = async () => {
     if (isRecording) {
-      // Stop recording
+      // Stop recording — final text already in inputText via onInterimResult
       try {
-        setIsProcessing(true);
         const transcribedText = await stopRecording();
         setIsRecording(false);
-        setIsProcessing(false);
-
         if (transcribedText) {
-          // FIX: was `transcribedText.startsWith &&` (always truthy — bug!)
-          if (transcribedText.startsWith('AUDIO_URI::')) {
-            const audioUri = transcribedText.replace('AUDIO_URI::', '');
-            Alert.alert('Ghi âm đã lưu', 'Không thể nhận diện giọng nói. Bạn muốn thử lại?', [
-              { text: 'Huỷ', style: 'cancel' },
-              {
-                text: 'Thử lại',
-                onPress: async () => {
-                  try {
-                    setIsProcessing(true);
-                    const retryText = await retryTranscribe(audioUri);
-                    if (retryText) {
-                      // Hiện text edit modal thay vì parse thẳng
-                      setPendingVoiceText(retryText);
-                      setVoiceTextEditVisible(true);
-                    } else {
-                      Alert.alert('Không có văn bản', 'Không nhận diện được tiếng nói.');
-                    }
-                  } catch (e) {
-                    Alert.alert('Lỗi', 'Thử lại thất bại.');
-                  } finally {
-                    setIsProcessing(false);
-                  }
-                },
-              },
-            ]);
-          } else {
-            // ✅ Hiện modal để user xem và sửa text trước khi AI parse
-            setPendingVoiceText(transcribedText);
-            setVoiceTextEditVisible(true);
-          }
+          setInputText(transcribedText);
         }
       } catch (error: any) {
         console.error('Stop recording error:', error);
-        Alert.alert('Lỗi', error.message || 'Không thể xử lý giọng nói');
         setIsRecording(false);
-        setIsProcessing(false);
       }
     } else {
       // Start recording
       try {
+        setInputText('');
         await startRecording();
         setIsRecording(true);
       } catch (error: any) {
         console.error('Start recording error:', error);
         Alert.alert('Lỗi', error.message || 'Không thể bắt đầu ghi âm');
       }
+    }
+  };
+
+  // Submit from voice bottom sheet
+  const handleVoiceSend = async () => {
+    // Stop recognition if still running
+    if (isRecording) {
+      try {
+        const text = await stopRecording();
+        setIsRecording(false);
+        if (text) setInputText(text);
+        // Small delay so inputText state updates
+        setTimeout(() => {
+          const finalText = text || inputText;
+          if (finalText.trim()) processInput(finalText.trim());
+        }, 100);
+      } catch {
+        setIsRecording(false);
+        if (inputText.trim()) processInput(inputText.trim());
+      }
+    } else {
+      if (inputText.trim()) processInput(inputText.trim());
     }
   };
 
@@ -561,15 +584,16 @@ export function SellScreen() {
             </View>
           )}
 
-          {/* Input Bar - Knote Style */}
-          {!isRecording && (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-              style={styles.bottomBarWrapper}
-            >
+          {/* ─── Bottom Bar: Normal / Voice Mode ─────────────────────── */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            style={styles.bottomBarWrapper}
+          >
+            {/* Normal Bottom Bar — hidden when recording */}
+            {!isRecording && (
               <View style={styles.bottomBar}>
-                {/* Grid Button — mở thư viện sản phẩm */}
+                {/* Grid Button */}
                 <TouchableOpacity style={styles.bottomBtn} onPress={() => setProductGridVisible(true)}>
                   <View style={styles.gridIconWrap}>
                     <View style={styles.gridRow}>
@@ -587,7 +611,7 @@ export function SellScreen() {
                 <View style={styles.inputPill}>
                   <TextInput
                     style={styles.pillInput}
-                    placeholder="Nhập tên hàng..."
+                    placeholder="Nhập tên hàng + giá"
                     placeholderTextColor="#94A3B8"
                     value={inputText}
                     onChangeText={setInputText}
@@ -605,7 +629,7 @@ export function SellScreen() {
                 {/* Mic Button */}
                 <TouchableOpacity style={styles.micBtn} onPress={handleMicPress} disabled={isProcessing}>
                   <LinearGradient
-                    colors={[Colors.primary, '#3B82F6']} // Blue gradient like reference
+                    colors={[Colors.primary, '#3B82F6']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.micGradient}
@@ -623,75 +647,80 @@ export function SellScreen() {
                   <Text style={styles.cameraIcon}>📷</Text>
                 </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
-          )}
+            )}
 
-          {/* Recording Overlay - Bottom Sheet Style */}
-          <Modal
-            visible={isRecording}
-            transparent
-            animationType="slide"
-            onRequestClose={() => { }}
-          >
-            <View style={styles.recordingOverlayBg}>
-              <View style={styles.recordingSheet}>
-                {/* Live Transcript Preview */}
-                <View style={styles.transcriptPreview}>
-                  <Text style={styles.transcriptText}>
-                    {inputText || "Đang nghe..."}
-                  </Text>
-                </View>
-
-                {/* Waveform Visualization */}
-                <View style={styles.waveformWrap}>
-                  <Animated.View style={{ transform: [{ scale: recordingAnim }] }}>
-                    <LinearGradient
-                      colors={['#3B82F6', '#60A5FA']}
-                      style={styles.waveformBarMain}
-                    />
-                  </Animated.View>
-                  <Text style={styles.recordingHint}>Hãy thử nói: "2 bánh mỳ 5,000"</Text>
-                </View>
-
-                {/* Action Buttons */}
-                <View style={styles.recordingActions}>
-                  <TouchableOpacity
-                    style={styles.recordActionBtn}
-                    onPress={async () => {
-                      await cancelRecording();
-                      setIsRecording(false);
-                      setInputText('');
-                    }}
-                  >
-                    <View style={styles.recordActionIconWrap}>
-                      <Text style={styles.recordActionIcon}>🗑️</Text>
-                    </View>
-                    <Text style={styles.recordActionLabel}>Xóa</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.recordActionBtn, styles.stopActionBtn]}
-                    onPress={() => stopRecording().then((text) => {
-                      setIsRecording(false);
-                      if (text && !text.startsWith('AUDIO_URI::')) {
-                        // Hiện text edit modal thay vì parse trực tiếp
-                        setPendingVoiceText(text);
-                        setVoiceTextEditVisible(true);
-                      }
-                    })}
-                  >
-                    <LinearGradient
-                      colors={[Colors.primary, '#2563EB']}
-                      style={styles.stopBtnGradient}
-                    >
-                      <Text style={styles.stopBtnIcon}>➤</Text>
-                    </LinearGradient>
-                    <Text style={styles.recordActionLabel}>Gửi</Text>
-                  </TouchableOpacity>
-                </View>
+            {/* Voice Sheet — slides up like keyboard */}
+            <Animated.View
+              style={[
+                styles.voiceSheet,
+                { ...styles.voiceSheet, borderRadius: 32 },
+                {
+                  transform: [{ translateY: voiceSheetAnim }],
+                },
+                !isRecording && { position: 'absolute', opacity: 0, pointerEvents: 'none' as any },
+              ]}
+            >
+              {/* Editable input with live transcript */}
+              <View style={{ ...styles.voiceInputRow, paddingHorizontal: 20 }}>
+                <TextInput
+                  style={styles.voiceInput}
+                  placeholder='Nhập tên hàng + giá'
+                  placeholderTextColor="#94A3B8"
+                  value={inputText}
+                  onChangeText={setInputText}
+                  onSubmitEditing={handleVoiceSend}
+                  returnKeyType="send"
+                  multiline={true}
+                />
               </View>
-            </View>
-          </Modal>
+
+              {/* Waveform Visualization */}
+              <View style={styles.waveformWrap}>
+                <View style={styles.waveformBars}>
+                  {waveAnims.map((anim, index) => (
+                    <Animated.View
+                      key={index}
+                      style={[
+                        styles.waveBar,
+                        { transform: [{ scaleY: anim }] }
+                      ]}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.recordingHint}>Đọc tên hàng + giá</Text>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.recordingActions}>
+                <TouchableOpacity
+                  style={styles.recordActionBtn}
+                  onPress={() => {
+                    cancelRecording();
+                    setIsRecording(false);
+                    setInputText('');
+                  }}
+                >
+                  <View style={styles.recordActionIconWrap}>
+                    <Text style={styles.recordActionIcon}>🗑️</Text>
+                  </View>
+                  <Text style={styles.recordActionLabel}>Xóa</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.recordActionBtn, styles.stopActionBtn]}
+                  onPress={handleVoiceSend}
+                >
+                  <LinearGradient
+                    colors={[Colors.primary, '#2563EB']}
+                    style={styles.stopBtnGradient}
+                  >
+                    <Text style={styles.stopBtnIcon}>➤</Text>
+                  </LinearGradient>
+                  <Text style={styles.recordActionLabel}>Gửi</Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </KeyboardAvoidingView>
 
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -863,61 +892,7 @@ export function SellScreen() {
         </View>
       </Modal>
 
-      {/* ─── Voice Text Edit Modal ─────────────────────────────────────────── */}
-      <Modal
-        visible={voiceTextEditVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setVoiceTextEditVisible(false)}
-      >
-        {/* KeyboardAvoidingView — tự đẩy popup lên khi bàn phím mở */}
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.confirmOverlay}>
-            <View style={styles.voiceEditSheet}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.voiceEditTitle}>🎤 Kiểm tra nội dung</Text>
-              <Text style={styles.voiceEditHint}>
-                Sửa lại nếu AI nghe nhầm, rồi bấm{' '}
-                <Text style={{ fontWeight: '800', color: '#3B82F6' }}>Phân tích</Text>
-              </Text>
-              <TextInput
-                style={styles.voiceEditInput}
-                value={pendingVoiceText}
-                onChangeText={setPendingVoiceText}
-                multiline
-                placeholder="VD: 2 bánh poca 10k, 1 nước ngọt 15k"
-                placeholderTextColor="#94A3B8"
-              />
-              <View style={styles.voiceEditTipRow}>
-                <Text style={styles.voiceEditTip}>💡 Mẹo: "2 bánh poca 10k, 3 bò húc 15k, bàn 5"</Text>
-              </View>
-              <View style={styles.voiceEditActions}>
-                <TouchableOpacity
-                  style={styles.voiceEditCancelBtn}
-                  onPress={() => { setVoiceTextEditVisible(false); setPendingVoiceText(''); }}
-                >
-                  <Text style={styles.voiceEditCancelText}>Huỷ</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.voiceEditConfirmBtn, !pendingVoiceText.trim() && { opacity: 0.5 }]}
-                  onPress={handleVoiceTextConfirm}
-                  disabled={!pendingVoiceText.trim() || isProcessing}
-                >
-                  <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.voiceEditGradient}>
-                    {isProcessing
-                      ? <ActivityIndicator color="#fff" size="small" />
-                      : <Text style={styles.voiceEditConfirmText}>🤖 Phân tích đơn hàng</Text>
-                    }
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* Voice Text Edit Modal removed — user edits directly in bottom sheet input */}
 
       {/* ─── Product Quick-Pick Grid ──────────────────────────────────────────  */}
       <Modal
@@ -1392,10 +1367,9 @@ const styles = StyleSheet.create({
   // NEW BOTTOM BAR STYLES
   bottomBarWrapper: {
     position: 'absolute',
-    bottom: 34, // Reset to reasonable bottom padding (Safe Area)
+    bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 16,
     backgroundColor: 'transparent',
     zIndex: 20,
   },
@@ -1404,6 +1378,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 34, // Safe Area padding
   },
   bottomBtn: {
     width: 44,
@@ -1484,79 +1460,83 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // RECORDING OVERLAY (BOTTOM SHEET STYLE)
-  recordingOverlayBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'flex-end',
-  },
-  recordingSheet: {
+  // VOICE BOTTOM SHEET (INLINE)
+  voiceSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: 40,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 40, // Extra padding for safe area
     alignItems: 'center',
-    minHeight: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 20,
   },
-  transcriptPreview: {
+  voiceInputRow: {
     width: '100%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
     marginBottom: 24,
-    minHeight: 60,
-    justifyContent: 'center',
   },
-  transcriptText: {
-    fontSize: 16,
-    color: '#334155',
+  voiceInput: {
+    fontSize: 18,
+    color: '#1E293B',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     fontWeight: '500',
-    textAlign: 'center',
   },
   waveformWrap: {
-    height: 100,
+    height: 90,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
     width: '100%',
   },
-  waveformBarMain: {
-    width: 200,
+  waveformBars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     height: 48,
-    borderRadius: 24,
-    opacity: 0.2, // Simulate waveform visual background
+    gap: 6,
+  },
+  waveBar: {
+    width: 6,
+    height: 12, // Base height
+    borderRadius: 3,
+    backgroundColor: '#3B82F6',
   },
   recordingHint: {
-    marginTop: 16,
-    fontSize: 15,
-    color: '#64748B',
+    marginTop: 10,
+    fontSize: 14,
+    color: '#94A3B8',
     textAlign: 'center',
+    fontWeight: '500',
   },
   recordingActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: 32,
     width: '100%',
-    paddingHorizontal: 20,
   },
   recordActionBtn: {
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   recordActionIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   recordActionIcon: {
-    fontSize: 24,
+    fontSize: 22,
   },
   recordActionLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#64748B',
   },
@@ -1564,22 +1544,22 @@ const styles = StyleSheet.create({
     // Special styling for Send button
   },
   stopBtnGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 5,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   stopBtnIcon: {
-    fontSize: 28,
+    fontSize: 24,
     color: '#fff',
-    marginLeft: 4, // Visual center correction
+    marginLeft: 3,
   },
 
   // Edit Modal styles

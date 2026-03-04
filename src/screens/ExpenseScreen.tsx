@@ -25,7 +25,7 @@ import { Colors, Gradients, Shadows } from '../constants/theme';
 import AnimatedScreen from '../components/AnimatedScreen';
 import GlassCard from '../components/GlassCard';
 import AnimatedNumber from '../components/AnimatedNumber';
-import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording } from '../services/voiceRecorder';
+import { startRecording, stopRecording, cancelRecording, isRecording as checkIsRecording, onInterimResult } from '../services/voiceRecorder';
 import { useStore } from '../store/useStore';
 
 export function ExpenseScreen() {
@@ -52,8 +52,11 @@ export function ExpenseScreen() {
           Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
         ])
       ).start();
+      // Show real-time transcript in input field
+      onInterimResult((text) => setInputText(text));
     } else {
       pulseAnim.setValue(1);
+      onInterimResult(null);
     }
   }, [isRecording]);
 
@@ -97,7 +100,7 @@ export function ExpenseScreen() {
         setIsProcessing(true);
         const transcribedText = await stopRecording();
         setIsRecording(false);
-        if (transcribedText && !transcribedText.startsWith('AUDIO_URI::')) {
+        if (transcribedText) {
           setInputText(transcribedText);
         }
       } catch (error: any) {
