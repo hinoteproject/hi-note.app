@@ -123,9 +123,18 @@ export async function startRecording(): Promise<void> {
     ExpoSpeechRecognitionModule.start({
       lang: 'vi-VN',
       interimResults: true,
-      continuous: false,
+      continuous: true,
       addsPunctuation: true,
       requiresOnDeviceRecognition: false,
+      androidIntentOptions: {
+        EXTRA_ENABLE_LANGUAGE_DETECTION: false,
+        EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES: ['vi-VN'],
+        EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES: ['vi-VN'],
+        // Tùy chỉnh VAD (Voice Activity Detection) ngắt câu: 
+        // Thời gian im lặng (ms) trước khi STT cho rằng bạn đã nói xong và tự đóng
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 3000,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 3000,
+      },
       volumeChangeEventOptions: {
         enabled: true,
         intervalMillis: 50, // update volume every 50ms for smooth animation
