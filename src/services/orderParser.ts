@@ -1,10 +1,9 @@
 import { Product, AIParseResult } from '../types';
-import { GROQ_API_KEY } from '../config/keys';
+import { GEMINI_API_KEY } from '../config/keys';
 import { retrieveRelevantProducts, shouldUseFullList } from './rag';
 
-// Groq API key
-const GROQ_KEY = GROQ_API_KEY;
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+// Google Gemini API
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 export interface ParseOptions {
   useMenuMatching?: boolean; // Bật/tắt tính năng khớp menu
@@ -15,7 +14,7 @@ export async function parseVoiceToOrder(
   existingProducts: Product[],
   options: ParseOptions = { useMenuMatching: true }
 ): Promise<AIParseResult> {
-  console.log('🤖 Parsing with Groq AI + RAG:', voiceText);
+  console.log('🤖 Parsing with Gemini AI + RAG:', voiceText);
 
   // ── RAG: Chỉ lấy sản phẩm liên quan thay vì gửi toàn bộ menu ──────────
   let relevantProducts: Product[] = [];
@@ -52,7 +51,7 @@ QUY TẮC KHỚP SẢN PHẨM — RẤT QUAN TRỌNG:
 `
     : '';
 
-  const systemPrompt = `Bạn là AI parser đơn hàng cho app bán hàng Việt Nam. Từ câu nói/văn bản của người bán, trích xuất thông tin đơn hàng.
+  const prompt = `Bạn là AI parser đơn hàng cho app bán hàng Việt Nam. Từ câu nói/văn bản của người bán, trích xuất thông tin đơn hàng.
 ${menuSection}
 YÊU CẦU:
 - Trích xuất danh sách sản phẩm (tên, số lượng, giá nếu có)
@@ -79,34 +78,36 @@ TRẢ VỀ JSON THUẦN (không markdown, không code block):
 QUAN TRỌNG VỀ FORMAT:
 - price PHẢI LÀ SỐ NGUYÊN KHÔNG DẤU: 35000 ✓, KHÔNG phải "35.000" hay "35,000" hay "35*000" hay "35-000" ✗
 - Không dùng markdown (**, *, _) trong JSON
-- Không bao JSON trong code block (\`\`\`json)`;
+- Không bao JSON trong code block (\`\`\`json)
+
+CÂU NÓI CẦN PARSE:
+"${voiceText}"`;
 
   try {
-    const response = await fetch(GROQ_URL, {
+    const response = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: voiceText }
-        ],
-        temperature: 0.1,
-        max_tokens: 1024,
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+        },
       }),
     });
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('Groq API Error:', error);
+      console.error('Gemini API Error:', error);
       throw new Error('API request failed');
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
       throw new Error('Empty response');
@@ -130,7 +131,7 @@ QUAN TRỌNG VỀ FORMAT:
           .replace(/,\s*}/g, '}');
 
         const result = JSON.parse(jsonStr) as AIParseResult;
-        console.log('✅ Groq parsed:', result);
+        console.log('✅ Gemini parsed:', result);
         return result;
       } catch (parseErr) {
         console.error('JSON parse error:', parseErr);
@@ -162,20 +163,15 @@ function simpleParser(text: string, products: Product[]): AIParseResult {
   }
 
   // Pattern: (Quantity?) + Tên sản phẩm + giá (VD: "Phở bò 35k", "1 cà phê 20k")
-  // Regex: 
-  // (?:(\d+)\s+)? -> Group 1 (Optional): Quantity (digits followed by space)
-  // ([a-zA-ZÀ-ỹ0-9\s]+?) -> Group 2: Name (allow digits inside name too, but non-greedy)
-  // \s*(\d+)\s*(?:k|nghìn|ngàn) -> Group 3: Price
   const itemRegex = /(?:(\d+)\s+)?([a-zA-ZÀ-ỹ0-9\s]+?)\s*(\d+)\s*(?:k|nghìn|ngàn)/gi;
   let match;
 
   while ((match = itemRegex.exec(text)) !== null) {
     const quantity = match[1] ? parseInt(match[1]) : 1;
-    // Xóa số và đơn vị đếm dính vào đầu tên (VD: "2 chai nước ngọt" → "nước ngọt")
     let name = match[2]
       .trim()
-      .replace(/^\d+\s+/, '')                                        // xóa số đầu: "2 "
-      .replace(/^(tô|ly|cái|phần|suất|bịch|lon|chai|gói|hộp|túi)\s+/i, '') // xóa đơn vị đầu
+      .replace(/^\d+\s+/, '')
+      .replace(/^(tô|ly|cái|phần|suất|bịch|lon|chai|gói|hộp|túi)\s+/i, '')
       .trim();
     let price = parseInt(match[3]) * 1000;
 

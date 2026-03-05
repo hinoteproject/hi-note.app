@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system';
-import { GROQ_API_KEY } from '../config/keys';
+import { GEMINI_API_KEY } from '../config/keys';
 import { Product } from '../types';
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 export interface ImageOcrResult {
   items: {
@@ -15,14 +15,13 @@ export interface ImageOcrResult {
 }
 
 /**
- * Sử dụng Groq Vision API (MIỄN PHÍ) để đọc hóa đơn từ ảnh
- * Model: llama-3.2-90b-vision-preview
+ * Sử dụng Google Gemini Vision API (MIỄN PHÍ) để đọc hóa đơn từ ảnh
  */
 export async function extractOrderFromImage(
   imageUri: string,
   existingProducts: Product[]
 ): Promise<ImageOcrResult> {
-  console.log('📸 Extracting order from image with Groq Vision...');
+  console.log('📸 Extracting order from image with Gemini Vision...');
 
   try {
     // Convert image to base64
@@ -36,7 +35,7 @@ export async function extractOrderFromImage(
       price: p.price,
     }));
 
-    const systemPrompt = `Bạn là AI OCR chuyên đọc hóa đơn bán hàng Việt Nam.
+    const prompt = `Bạn là AI OCR chuyên đọc hóa đơn bán hàng Việt Nam.
 
 NHIỆM VỤ:
 - Đọc ảnh hóa đơn/tin nhắn chốt đơn
@@ -59,44 +58,38 @@ TRẢ VỀ JSON THUẦN (không markdown):
   "note": null
 }`;
 
-    const response = await fetch(GROQ_URL, {
+    const response = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.2-90b-vision-preview',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: systemPrompt,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`,
-                },
-              },
-            ],
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 1024,
+        contents: [{
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Image,
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+        },
       }),
     });
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('Groq Vision API Error:', error);
+      console.error('Gemini Vision API Error:', error);
       throw new Error('Không thể đọc ảnh. Vui lòng thử lại.');
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
       throw new Error('Không nhận được kết quả từ AI');
@@ -111,7 +104,7 @@ TRẢ VỀ JSON THUẦN (không markdown):
           .replace(/,\s*}/g, '}');
 
         const result = JSON.parse(jsonStr) as ImageOcrResult;
-        console.log('✅ Groq Vision parsed:', result);
+        console.log('✅ Gemini Vision parsed:', result);
         return result;
       } catch (parseErr) {
         console.error('JSON parse error:', parseErr);
