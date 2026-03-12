@@ -3,8 +3,8 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -31,7 +31,10 @@ const Stack = createNativeStackNavigator();
 /* ─── Premium Tab Bar ─── */
 function CustomTabBar(props: any) {
   const { state, navigation } = props;
+  const insets = useSafeAreaInsets();
   const centerScale = useRef(new Animated.Value(1)).current;
+
+  const bottomPadding = insets.bottom || 0;
 
   const handleTabPress = (route: any, isFocused: boolean) => {
     const event = navigation.emit({
@@ -62,8 +65,8 @@ function CustomTabBar(props: any) {
   ];
 
   return (
-    <View style={tabStyles.wrapper}>
-      <View style={tabStyles.container}>
+    <View style={[tabStyles.wrapper, { paddingBottom: bottomPadding, height: 72 + bottomPadding }]}>
+      <View style={[tabStyles.container, { height: 72 + bottomPadding, paddingBottom: bottomPadding }]}>
         {tabConfig.map((tab, i) => {
           if (!tab) {
             // Center Sell Button
@@ -125,20 +128,24 @@ const tabStyles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 12,
-    paddingBottom: 20,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: '#FFFFFF',
   },
   container: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     height: 72,
     width: '100%',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.6)',
+    overflow: 'visible',
     ...Shadows.xl,
   },
   tab: {
@@ -229,6 +236,26 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => !!storeUser);
   const [userName, setUserName] = useState<string>(() => (storeUser ? storeUser.name : ''));
   const [showWelcome, setShowWelcome] = useState(false);
+
+  // Align Android navigation bar color with bottom tab background (safe-guarded)
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const syncNavBar = async () => {
+      try {
+        const nav = require('expo-navigation-bar');
+        if (nav?.setBackgroundColorAsync) {
+          // Match tab bar base color (solid) for perfect blend with system nav bar
+          await nav.setBackgroundColorAsync('#FFFFFF');
+          nav.setButtonStyleAsync?.('dark');
+          nav.setVisibilityAsync?.('visible');
+        }
+      } catch (e: any) {
+        // Native module may be unavailable on some builds; ignore quietly
+        console.warn('Navigation bar sync skipped:', e?.message || e);
+      }
+    };
+    syncNavBar();
+  }, []);
 
   React.useEffect(() => {
     if (storeUser) {

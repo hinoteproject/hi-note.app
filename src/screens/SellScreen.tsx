@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,6 +27,7 @@ import { OrderItem } from '../types';
 
 export function SellScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -467,7 +468,7 @@ export function SellScreen() {
           style={styles.gradient}
         />
 
-        <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
@@ -503,7 +504,7 @@ export function SellScreen() {
           {/* Content */}
           <ScrollView
             style={styles.content}
-            contentContainerStyle={styles.contentInner}
+            contentContainerStyle={[styles.contentInner, { paddingBottom: 180 + insets.bottom }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -588,7 +589,7 @@ export function SellScreen() {
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            style={styles.bottomBarWrapper}
+            style={[styles.bottomBarWrapper, { paddingBottom: Math.max(insets.bottom, 10) }]}
           >
             {/* Normal Bottom Bar — hidden when recording */}
             {!isRecording && (

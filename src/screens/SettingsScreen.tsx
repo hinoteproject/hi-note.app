@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
+import { auth } from '../services/firebase';
 import AnimatedScreen from '../components/AnimatedScreen';
 import GlassCard from '../components/GlassCard';
 import { Colors, Gradients, Shadows } from '../constants/theme';
@@ -76,11 +77,16 @@ const menuCardStyles = StyleSheet.create({
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { bankAccounts, addBankAccount, setDefaultBank, user, logout, useMenuMatching, setUseMenuMatching } = useStore();
+  const { bankAccounts, addBankAccount, setDefaultBank, user, logout, useMenuMatching, setUseMenuMatching, updateUserProfile } = useStore();
   const [modalVisible, setModalVisible] = useState(false);
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editBusiness, setEditBusiness] = useState('');
 
   const handleAddBank = () => {
     if (!bankName || !accountNumber || !accountName) {
@@ -137,7 +143,13 @@ export function SettingsScreen() {
               <Text style={styles.userName}>{user?.name || 'Chủ quán'}</Text>
               <Text style={styles.userRole}>{user?.business || 'Chủ quán'}{user?.city ? ` • ${user.city}` : ''}</Text>
 
-              <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.8} onPress={() => {
+                setEditName(user?.name || '');
+                setEditPhone(user?.phone || '');
+                setEditCity(user?.city || '');
+                setEditBusiness(user?.business || '');
+                setProfileModalVisible(true);
+              }}>
                 <LinearGradient
                   colors={['rgba(16,185,129,0.1)', 'rgba(16,185,129,0.05)']}
                   style={styles.editProfileGradient}
@@ -288,6 +300,75 @@ export function SettingsScreen() {
                 <TouchableOpacity style={styles.saveBtnWrap} onPress={handleAddBank} activeOpacity={0.85}>
                   <LinearGradient colors={Gradients.primary} style={styles.saveBtn}>
                     <Text style={styles.saveText}>Lưu tài khoản</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* ─── Edit Profile Modal ─── */}
+        <Modal visible={profileModalVisible} animationType="slide" transparent onRequestClose={() => setProfileModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Chỉnh sửa hồ sơ</Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Họ tên</Text>
+                <TextInput style={styles.input} placeholder="Họ tên" value={editName} onChangeText={setEditName} />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Số điện thoại</Text>
+                <TextInput style={styles.input} placeholder="Số điện thoại" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Tỉnh/Thành phố</Text>
+                <TextInput style={styles.input} placeholder="Tỉnh/Thành phố" value={editCity} onChangeText={setEditCity} />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Ngành kinh doanh</Text>
+                <TextInput style={styles.input} placeholder="Ngành" value={editBusiness} onChangeText={setEditBusiness} />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.saveBtnWrap, { marginBottom: 10 }]}
+                onPress={async () => {
+                  // Try to map Google displayName immediately if available
+                  try {
+                    const display = auth?.currentUser?.displayName;
+                    if (display) {
+                      setEditName(display);
+                      Alert.alert('Đã lấy tên Google', `Tên: ${display}`);
+                      return;
+                    }
+                    Alert.alert('Không tìm thấy', 'Không có tên Google sẵn có trên thiết bị này');
+                  } catch (e) {
+                    Alert.alert('Lỗi', 'Không thể lấy tên Google');
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <LinearGradient colors={Gradients.primary} style={styles.saveBtn}>
+                  <Text style={styles.saveText}>Lấy tên Google</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setProfileModalVisible(false)} activeOpacity={0.8}>
+                  <Text style={styles.cancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtnWrap} onPress={async () => {
+                  try {
+                    await updateUserProfile({ name: editName, phone: editPhone || undefined, city: editCity || undefined, business: editBusiness || undefined });
+                    setProfileModalVisible(false);
+                    Alert.alert('✓', 'Đã cập nhật hồ sơ');
+                  } catch (e) {
+                    Alert.alert('Lỗi', 'Cập nhật không thành công');
+                  }
+                }} activeOpacity={0.85}>
+                  <LinearGradient colors={Gradients.primary} style={styles.saveBtn}>
+                    <Text style={styles.saveText}>Lưu hồ sơ</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>

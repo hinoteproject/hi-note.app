@@ -23,6 +23,7 @@ import {
   addStockImportToFirebase,
   getStockImportsFromFirebase,
   getExpensesFromFirebase,
+  updateUserInFirebase,
 } from '../services/firebaseStore';
 
 interface StoreState {
@@ -104,6 +105,7 @@ interface StoreState {
     createdAt: Date;
   } | null;
   setUser: (user: { name: string; phone?: string; email?: string; city?: string; business?: string; createdAt?: Date }) => void;
+  updateUserProfile: (updates: Partial<{ name: string; phone?: string; email?: string; city?: string; business?: string }>) => Promise<void>;
   login: (phone: string) => Promise<boolean>;
   loginByEmail: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -154,6 +156,47 @@ export const useStore = create<StoreState>()((set, get) => ({
         // ignore if not available
       }
     })();
+  },
+  updateUserProfile: async (updates) => {
+    const current = get().user;
+    if (!current) return;
+
+    const merged = { ...current, ...updates } as any;
+    set({ user: merged });
+
+    // persist locally
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('hi_note_user', JSON.stringify(merged));
+    } catch (e) {
+      // ignore
+    }
+
+    // update remote user doc if possible
+    try {
+      if (isFirebaseConfigured && current.id) {
+        await updateUserInFirebase(current.id, updates as any);
+      } else if (isFirebaseConfigured) {
+        // try locate remote by email/phone and update
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getUserByEmailFromFirebase, getUserByPhoneFromFirebase } = require('../services/firebaseStore');
+        let remote = null;
+        if ((merged as any).email) remote = await getUserByEmailFromFirebase((merged as any).email);
+        if (!remote && (merged as any).phone) remote = await getUserByPhoneFromFirebase((merged as any).phone);
+        if (remote) {
+          await updateUserInFirebase(remote.id, updates as any);
+          // ensure local id matches remote
+          set({ user: { ...merged, id: remote.id } });
+          try {
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            await AsyncStorage.setItem('hi_note_user', JSON.stringify({ ...merged, id: remote.id }));
+          } catch {}
+        }
+      }
+    } catch (e) {
+      // ignore remote errors
+    }
   },
   loadUserFromStorage: async () => {
     try {
